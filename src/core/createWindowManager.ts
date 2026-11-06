@@ -1,5 +1,5 @@
 import { WindowManagerError } from './errors';
-import { cascade, clampBounds, workArea } from './geometry';
+import { boundsForZone, cascade, clampBounds, workArea } from './geometry';
 import type {
   AppDefinition,
   AppId,
@@ -13,6 +13,7 @@ import type {
   Point,
   ShellSettings,
   Size,
+  SnapZone,
   WindowId,
   WindowManager,
   WindowManagerEvent,
@@ -627,8 +628,10 @@ export function createWindowManager(options: WindowManagerOptions): WindowManage
       const draft = begin();
       const win = need(draft, id);
       if (win.status !== 'normal') return;
-      const bounds = clampWindowBounds(draft, win, { ...win.bounds, x: to.x, y: to.y });
-      setWindow(draft, { ...win, bounds });
+      // Moving a snapped window unsnaps it: it goes back to its normal size at the new position.
+      const size = win.snap !== null && win.restoreBounds ? win.restoreBounds : win.bounds;
+      const bounds = clampWindowBounds(draft, win, { ...size, x: to.x, y: to.y });
+      setWindow(draft, { ...win, bounds, snap: null, restoreBounds: null });
       commit(draft);
     },
 
@@ -641,7 +644,38 @@ export function createWindowManager(options: WindowManagerOptions): WindowManage
       const draft = begin();
       const win = need(draft, id);
       if (win.status !== 'normal' || !isResizable(win)) return;
-      setWindow(draft, { ...win, bounds: clampWindowBounds(draft, win, bounds) });
+      // Resizing a snapped window unsnaps it.
+      setWindow(draft, {
+        ...win,
+        bounds: clampWindowBounds(draft, win, bounds),
+        snap: null,
+        restoreBounds: null,
+      });
+      commit(draft);
+    },
+
+    snap(id, zone) {
+      const draft = begin();
+      const win = need(draft, id);
+      if (zone === null) {
+        if (win.snap === null) return;
+        const normal = toNormal(draft, win);
+        setWindow(draft, win.status === 'minimized' ? { ...normal, status: 'minimized' } : normal);
+        commit(draft);
+        return;
+      }
+      if (!isResizable(win) || win.status === 'fullscreen') return;
+      if (win.status === 'minimized') restoreTree(draft, minimizedRoot(draft, id));
+      const current = need(draft, id);
+      maximizedBeforeFullscreen.delete(id);
+      setWindow(draft, {
+        ...current,
+        status: 'normal',
+        snap: zone,
+        restoreBounds: current.restoreBounds ?? current.bounds,
+        bounds: clampWindowBounds(draft, current, boundsForZone(zone, areaOf(draft))),
+      });
+      applyFocus(draft, id);
       commit(draft);
     },
 
@@ -703,7 +737,9 @@ export function createWindowManager(options: WindowManagerOptions): WindowManage
         } else if (effective === 'fullscreen') {
           setWindow(draft, { ...win, bounds: fullViewport(draft), restoreBounds });
         } else {
-          setWindow(draft, { ...win, bounds: clampBounds(win.bounds, area, rules), restoreBounds });
+          // A snapped window keeps its zone, so it is fitted to the new area, not just clamped.
+          const target = win.snap !== null ? boundsForZone(win.snap, area) : win.bounds;
+          setWindow(draft, { ...win, bounds: clampBounds(target, area, rules), restoreBounds });
         }
       }
       commit(draft);

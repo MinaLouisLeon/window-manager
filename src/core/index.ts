@@ -6,5 +6,5 @@
 export { createWindowManager } from './createWindowManager';
 export type { WindowManagerErrorCode } from './errors';
 export { WindowManagerError } from './errors';
-export { cascade, clampBounds, workArea } from './geometry';
+export { boundsForZone, cascade, clampBounds, workArea, zoneAtPoint } from './geometry';
 export type * from './types';
