@@ -1,4 +1,19 @@
-import type { Bounds, Insets, Point, Size } from './types';
+import type { Bounds, Insets, Point, Size, SnapZone } from './types';
+
+/** Column and row span of each zone, as fractions of the area: [startX, endX, startY, endY]. */
+const ZONE_SPANS: Record<SnapZone, readonly [number, number, number, number]> = {
+  left: [0, 1 / 2, 0, 1],
+  right: [1 / 2, 1, 0, 1],
+  'top-left': [0, 1 / 2, 0, 1 / 2],
+  'top-right': [1 / 2, 1, 0, 1 / 2],
+  'bottom-left': [0, 1 / 2, 1 / 2, 1],
+  'bottom-right': [1 / 2, 1, 1 / 2, 1],
+  'left-third': [0, 1 / 3, 0, 1],
+  'center-third': [1 / 3, 2 / 3, 0, 1],
+  'right-third': [2 / 3, 1, 0, 1],
+  'left-two-thirds': [0, 2 / 3, 0, 1],
+  'right-two-thirds': [1 / 3, 1, 0, 1],
+};
 
 /** The area windows can use: the viewport minus the insets (for example the taskbar). */
 export function workArea(viewport: Size, insets: Insets): Bounds {
@@ -34,6 +49,62 @@ export function clampBounds(
     y: limit(bounds.y, area.y, area.y + area.height - visibleY),
     width,
     height,
+  };
+}
+
+/**
+ * The rectangle a snap zone covers inside `area`. Edges are rounded to whole pixels, and
+ * neighbouring zones share their edge, so zones tile the area without gaps or overlaps.
+ */
+export function boundsForZone(zone: SnapZone, area: Bounds): Bounds {
+  const [startX, endX, startY, endY] = ZONE_SPANS[zone];
+  const x0 = Math.round(area.x + area.width * startX);
+  const x1 = Math.round(area.x + area.width * endX);
+  const y0 = Math.round(area.y + area.height * startY);
+  const y1 = Math.round(area.y + area.height * endY);
+  return { x: x0, y: y0, width: x1 - x0, height: y1 - y0 };
+}
+
+/**
+ * The zone a pointer at `point` would snap to while a window is dragged: a corner gives a quarter,
+ * the left or right edge a half, the top edge `'maximize'`. "At an edge" means within `threshold`
+ * px of it, or beyond it. The bottom edge alone gives nothing (it is usually the taskbar).
+ */
+export function zoneAtPoint(
+  point: Point,
+  area: Bounds,
+  threshold: number,
+): SnapZone | 'maximize' | null {
+  const nearLeft = point.x <= area.x + threshold;
+  const nearRight = point.x >= area.x + area.width - threshold;
+  const nearTop = point.y <= area.y + threshold;
+  const nearBottom = point.y >= area.y + area.height - threshold;
+
+  if (nearTop && nearLeft) return 'top-left';
+  if (nearTop && nearRight) return 'top-right';
+  if (nearBottom && nearLeft) return 'bottom-left';
+  if (nearBottom && nearRight) return 'bottom-right';
+  if (nearLeft) return 'left';
+  if (nearRight) return 'right';
+  if (nearTop) return 'maximize';
+  return null;
+}
+
+/**
+ * Bounds for a maximized or snapped window that is being dragged back to its normal size: the
+ * normal size (`restore`), placed so the pointer keeps its relative horizontal spot on the title
+ * bar (halfway across the maximized bar stays halfway across the restored one) and its vertical
+ * distance from the top of the window (never more than the restored height).
+ */
+export function dragRestoreBounds(pointer: Point, current: Bounds, restore: Bounds): Bounds {
+  const ratio =
+    current.width > 0 ? Math.min(1, Math.max(0, (pointer.x - current.x) / current.width)) : 0.5;
+  const offsetY = Math.min(Math.max(0, pointer.y - current.y), restore.height);
+  return {
+    x: Math.round(pointer.x - ratio * restore.width),
+    y: Math.round(pointer.y - offsetY),
+    width: restore.width,
+    height: restore.height,
   };
 }
 

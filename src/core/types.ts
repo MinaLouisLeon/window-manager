@@ -245,10 +245,15 @@ export interface WindowManager {
   setFullscreen(id: WindowId, on: boolean): void;
   /** Moves a window (and its children) to or from the always-on-top layer. */
   setAlwaysOnTop(id: WindowId, on: boolean): void;
-  /** Moves a normal window, keeping its title bar in the work area. */
+  /** Moves a normal window, keeping its title bar in the work area (a snapped one is unsnapped). */
   move(id: WindowId, to: Point): void;
   /** Resizes a normal window within its size rules. Throws `INVALID_BOUNDS`. */
   resize(id: WindowId, bounds: Bounds): void;
+  /**
+   * Snaps a window to a zone of the work area (restoring a minimized or maximized one first), or
+   * back to its normal bounds with `null`. Ignored for fixed-size apps and fullscreen windows.
+   */
+  snap(id: WindowId, zone: SnapZone | null): void;
   /** Changes title, badge, dirty flag or data. */
   update<TData>(
     id: WindowId,

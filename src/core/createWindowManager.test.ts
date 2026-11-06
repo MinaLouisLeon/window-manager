@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createWindowManager } from './createWindowManager';
 import { WindowManagerError } from './errors';
+import { dragRestoreBounds } from './geometry';
 import type { AppDefinition, WindowId, WindowManager, WindowState } from './types';
 
 const apps: AppDefinition[] = [
@@ -531,6 +532,242 @@ describe('move and resize', () => {
     expect(codeOf(() => manager.setViewport({ width: Number.NaN, height: 100 }))).toBe(
       'INVALID_BOUNDS',
     );
+  });
+});
+
+describe('snap', () => {
+  const start = { x: 100, y: 50, width: 400, height: 300 };
+
+  function opened(manager: WindowManager): WindowId {
+    return manager.open({ appId: 'notes', bounds: start });
+  }
+
+  it('snaps to a zone of the work area and remembers the normal bounds', () => {
+    const manager = setup();
+    manager.setViewport({ width: 1000, height: 700 }, { top: 0, right: 0, bottom: 48, left: 0 });
+    const a = opened(manager);
+    manager.snap(a, 'right');
+    expect(win(manager, a)).toMatchObject({
+      status: 'normal',
+      snap: 'right',
+      bounds: { x: 500, y: 0, width: 500, height: 652 },
+      restoreBounds: start,
+    });
+    manager.snap(a, 'bottom-left');
+    expect(win(manager, a)).toMatchObject({
+      snap: 'bottom-left',
+      bounds: { x: 0, y: 326, width: 500, height: 326 },
+      restoreBounds: start,
+    });
+    manager.snap(a, 'center-third');
+    expect(win(manager, a)).toMatchObject({
+      snap: 'center-third',
+      bounds: { x: 333, y: 0, width: 334, height: 652 },
+      restoreBounds: start,
+    });
+  });
+
+  it('focuses and raises the snapped window', () => {
+    const manager = setup();
+    const a = opened(manager);
+    const b = opened(manager);
+    manager.snap(a, 'left');
+    expect(manager.getState().focusedId).toBe(a);
+    expect(manager.getState().order).toEqual([b, a]);
+  });
+
+  it('restore and snap(null) bring back the normal bounds', () => {
+    const manager = setup();
+    const a = opened(manager);
+    manager.snap(a, 'left');
+    manager.restore(a);
+    expect(win(manager, a)).toMatchObject({ snap: null, bounds: start, restoreBounds: null });
+
+    manager.snap(a, 'left');
+    manager.snap(a, null);
+    expect(win(manager, a)).toMatchObject({
+      status: 'normal',
+      snap: null,
+      bounds: start,
+      restoreBounds: null,
+    });
+  });
+
+  it('snap(null) on a window that is not snapped does nothing', () => {
+    const manager = setup();
+    const a = opened(manager);
+    const listener = vi.fn();
+    manager.subscribe(listener);
+    manager.snap(a, null);
+    manager.maximize(a);
+    listener.mockClear();
+    manager.snap(a, null);
+    expect(listener).not.toHaveBeenCalled();
+    expect(win(manager, a).status).toBe('maximized');
+  });
+
+  it('snapping a maximized window keeps the original normal bounds', () => {
+    const manager = setup();
+    const a = opened(manager);
+    manager.maximize(a);
+    manager.snap(a, 'left');
+    expect(win(manager, a)).toMatchObject({
+      status: 'normal',
+      snap: 'left',
+      restoreBounds: start,
+    });
+    manager.restore(a);
+    expect(win(manager, a).bounds).toEqual(start);
+  });
+
+  it('maximizing a snapped window clears the snap and keeps the original bounds', () => {
+    const manager = setup();
+    const a = opened(manager);
+    manager.snap(a, 'right');
+    manager.maximize(a);
+    expect(win(manager, a)).toMatchObject({
+      status: 'maximized',
+      snap: null,
+      restoreBounds: start,
+    });
+    manager.restore(a);
+    expect(win(manager, a).bounds).toEqual(start);
+  });
+
+  it('going fullscreen from a snap clears it, and leaving returns to the normal bounds', () => {
+    const manager = setup();
+    const a = opened(manager);
+    manager.snap(a, 'right');
+    manager.setFullscreen(a, true);
+    expect(win(manager, a)).toMatchObject({ status: 'fullscreen', snap: null });
+    manager.setFullscreen(a, false);
+    expect(win(manager, a)).toMatchObject({ status: 'normal', snap: null, bounds: start });
+  });
+
+  it('snaps a minimized window and brings it back', () => {
+    const manager = setup();
+    const a = opened(manager);
+    manager.minimize(a);
+    manager.snap(a, 'left');
+    expect(win(manager, a)).toMatchObject({ status: 'normal', snap: 'left', restoreBounds: start });
+    expect(manager.getState().focusedId).toBe(a);
+  });
+
+  it('keeps the snap through minimize and restore', () => {
+    const manager = setup();
+    const a = opened(manager);
+    manager.snap(a, 'left');
+    manager.minimize(a);
+    manager.restore(a);
+    expect(win(manager, a)).toMatchObject({ status: 'normal', snap: 'left' });
+  });
+
+  it('unsnaps a minimized window without restoring it', () => {
+    const manager = setup();
+    const a = opened(manager);
+    manager.snap(a, 'left');
+    manager.minimize(a);
+    manager.snap(a, null);
+    expect(win(manager, a)).toMatchObject({
+      status: 'minimized',
+      snap: null,
+      bounds: start,
+      restoreBounds: null,
+    });
+  });
+
+  it('ignores snapping for fixed-size apps and fullscreen windows', () => {
+    const manager = setup();
+    const fixed = manager.open({ appId: 'fixed' });
+    const fixedBefore = win(manager, fixed);
+    manager.snap(fixed, 'left');
+    expect(win(manager, fixed)).toEqual(fixedBefore);
+
+    const a = opened(manager);
+    manager.setFullscreen(a, true);
+    manager.snap(a, 'left');
+    expect(win(manager, a)).toMatchObject({ status: 'fullscreen', snap: null });
+  });
+
+  it('respects the min size of the app when a zone is smaller', () => {
+    const manager = setup();
+    manager.setViewport({ width: 600, height: 400 });
+    const a = manager.open({ appId: 'bounded' });
+    manager.snap(a, 'left-third');
+    expect(win(manager, a).bounds).toMatchObject({ width: 300, height: 400 });
+    manager.snap(a, 'top-left');
+    expect(win(manager, a).bounds).toMatchObject({ width: 300, height: 200 });
+  });
+
+  it('moving or resizing a snapped window unsnaps it', () => {
+    const manager = setup();
+    const a = opened(manager);
+    manager.snap(a, 'left');
+    manager.move(a, { x: 300, y: 200 });
+    expect(win(manager, a)).toMatchObject({
+      snap: null,
+      restoreBounds: null,
+      bounds: { x: 300, y: 200, width: 400, height: 300 },
+    });
+
+    manager.snap(a, 'right');
+    manager.resize(a, { x: 10, y: 10, width: 320, height: 240 });
+    expect(win(manager, a)).toMatchObject({
+      snap: null,
+      restoreBounds: null,
+      bounds: { x: 10, y: 10, width: 320, height: 240 },
+    });
+  });
+
+  it('drag-restore: a snapped window moved by the pointer gets its normal size back', () => {
+    const manager = setup();
+    const a = opened(manager);
+    manager.snap(a, 'right');
+    const snapped = win(manager, a);
+    const pointer = { x: 750, y: 12 };
+    const next = dragRestoreBounds(
+      pointer,
+      snapped.bounds,
+      snapped.restoreBounds as NonNullable<typeof snapped.restoreBounds>,
+    );
+    manager.move(a, { x: next.x, y: next.y });
+    expect(win(manager, a)).toMatchObject({
+      snap: null,
+      bounds: { x: 550, y: 0, width: 400, height: 300 },
+    });
+  });
+
+  it('fits a snapped window to the new area when the viewport changes', () => {
+    const manager = setup();
+    const a = opened(manager);
+    const b = opened(manager);
+    manager.snap(a, 'right');
+    manager.snap(b, 'top-left');
+    manager.minimize(b);
+    manager.setViewport({ width: 800, height: 600 }, { top: 0, right: 0, bottom: 40, left: 0 });
+    expect(win(manager, a).bounds).toEqual({ x: 400, y: 0, width: 400, height: 560 });
+    expect(win(manager, b).bounds).toEqual({ x: 0, y: 0, width: 400, height: 280 });
+    manager.restore(a);
+    expect(win(manager, a).bounds).toEqual(start);
+  });
+
+  it('emits window:changed and does not notify for the same snap twice', () => {
+    const manager = setup();
+    const a = opened(manager);
+    const changed = vi.fn();
+    manager.on('window:changed', changed);
+    manager.snap(a, 'left');
+    expect(changed).toHaveBeenCalledTimes(1);
+    expect(changed.mock.calls[0]?.[0].window).toMatchObject({ id: a, snap: 'left' });
+    const listener = vi.fn();
+    manager.subscribe(listener);
+    manager.snap(a, 'left');
+    expect(listener).not.toHaveBeenCalled();
+  });
+
+  it('throws UNKNOWN_WINDOW for an unknown id', () => {
+    const manager = setup();
+    expect(codeOf(() => manager.snap('nope', 'left'))).toBe('UNKNOWN_WINDOW');
   });
 });
 
