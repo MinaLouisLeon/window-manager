@@ -4,7 +4,10 @@
  * no `@integr8-media/ui`. The public API is added milestone by milestone (M1 to M5).
  */
 export { createWindowManager } from './createWindowManager';
+export type { DeepLink } from './deepLinks';
+export { buildDeepLink, parseDeepLink } from './deepLinks';
 export type { WindowManagerErrorCode } from './errors';
 export { WindowManagerError } from './errors';
 export { boundsForZone, cascade, clampBounds, workArea, zoneAtPoint } from './geometry';
+export { localStorageAdapter } from './persistence';
 export type * from './types';

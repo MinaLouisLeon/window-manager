@@ -195,12 +195,43 @@ export type WindowManagerEvent = keyof WindowManagerEvents;
 /** Payload of an event. */
 export type EventPayload<E extends WindowManagerEvent> = WindowManagerEvents[E];
 
+/** Where a layout is saved and loaded. */
+export interface LayoutStorage {
+  /** Returns the saved layout, or null when there is none. */
+  load(): LayoutSnapshot | null | Promise<LayoutSnapshot | null>;
+  /** Saves a layout. */
+  save(snapshot: LayoutSnapshot): void | Promise<void>;
+}
+
+/** A saved layout (version 1). Notifications and tray items are not part of it. */
+export interface LayoutSnapshot {
+  version: 1;
+  desktops: Desktop[];
+  activeDesktopId: DesktopId;
+  /** Bounds, status, snap, z, alwaysOnTop, parentId, modal and data of each window. */
+  windows: WindowState[];
+  iconOrder: AppId[];
+  pinnedApps: AppId[];
+  shell: ShellSettings;
+  /** For each minimized window, the status it returns to (absent in older snapshots). */
+  minimizedFrom?: Record<WindowId, 'normal' | 'maximized' | 'fullscreen'>;
+}
+
 /** Options for `createWindowManager`. The remaining options arrive with their milestones. */
 export interface WindowManagerOptions {
   apps: AppDefinition[];
   /** Default: one desktop named "Desktop 1". */
   desktops?: { id?: DesktopId; name: string; wallpaper?: Wallpaper }[];
   shell?: Partial<ShellSettings>;
+  /**
+   * Where the layout is loaded from on start and saved to after changes. A synchronous `load`
+   * restores the layout before `createWindowManager` returns.
+   */
+  storage?: LayoutStorage;
+  /** Which saved windows to reopen; default all. */
+  restore?: (win: WindowState) => boolean;
+  /** Delay before a change is saved, default 500. */
+  saveDebounceMs?: number;
   /** Pixels of a title bar that always stay in the work area, default 48. */
   minVisibleTitleBar?: number;
   /** Offset between cascaded windows, default 24. */
@@ -208,9 +239,9 @@ export interface WindowManagerOptions {
 }
 
 /**
- * The window manager. This is the part implemented so far (windows, focus, close guards, events);
- * desktops, snapping, messaging, persistence and the notification area are added by later
- * milestones.
+ * The window manager. This is the part implemented so far (windows, focus, close guards, events,
+ * snapping, desktops, icons, pinned apps, shell settings, persistence, messaging, deep links); the
+ * notification area is added by a later milestone.
  */
 export interface WindowManager {
   /** The current state. */
@@ -261,8 +292,94 @@ export interface WindowManager {
   ): void;
   /** Focuses the next (1) or previous (-1) window in most-recently-used order. */
   cycleFocus(direction?: 1 | -1): void;
+  /**
+   * Minimizes every window of the active desktop and remembers them (`true`), or brings back
+   * exactly those (`false`); toggles when omitted. Focusing or opening a window ends the mode.
+   */
+  showDesktop(on?: boolean): void;
+
+  /** Adds a desktop (default name "Desktop N") and returns its id. It does not switch to it. */
+  addDesktop(name?: string): DesktopId;
+  /** Renames a desktop. Throws `UNKNOWN_DESKTOP`. */
+  renameDesktop(id: DesktopId, name: string): void;
+  /**
+   * Removes a desktop. Its windows move to `moveWindowsTo`, or are closed (their close guards
+   * run first; resolves false when one refused); `moveWindowsTo` equal to the removed desktop is
+   * ignored. Throws `LAST_DESKTOP` for the only desktop and `UNKNOWN_DESKTOP` for a missing one.
+   */
+  removeDesktop(id: DesktopId, options?: { moveWindowsTo?: DesktopId }): Promise<boolean>;
+  /** Makes a desktop active and focuses its topmost visible window. */
+  switchDesktop(id: DesktopId): void;
+  /**
+   * Moves a window to another desktop. Child windows stay with their parent, so the whole tree
+   * moves together.
+   */
+  moveToDesktop(windowId: WindowId, desktopId: DesktopId): void;
+  /** Sets (or with `null` clears) the wallpaper of a desktop. */
+  setWallpaper(desktopId: DesktopId, wallpaper: Wallpaper | null): void;
+
+  /**
+   * Sets the order of the desktop icons: the listed apps first (duplicates dropped), then any
+   * icons not listed, in their current order. Throws `UNKNOWN_APP`.
+   */
+  setIconOrder(appIds: AppId[]): void;
+  /** Pins an app to the taskbar at `index` (default: the end); an already pinned app is moved. */
+  pinApp(appId: AppId, index?: number): void;
+  /** Removes an app from the taskbar pins. */
+  unpinApp(appId: AppId): void;
+  /**
+   * Sets the order of the pinned apps: the listed apps first (duplicates dropped), then any pins
+   * not listed, in their current order. Use `unpinApp` to remove one. Throws `UNKNOWN_APP`.
+   */
+  setPinnedOrder(appIds: AppId[]): void;
+  /** Changes taskbar position, auto-hide or controls style. */
+  setShellSettings(patch: Partial<ShellSettings>): void;
+
   /** Sets the viewport and taskbar insets and re-clamps every window. */
   setViewport(size: Size, insets?: Insets): void;
-  /** Removes every listener. */
+  /**
+   * Sends a message to one window, or to an app: its `onMessage` listeners and the listeners of
+   * every open window of that app. Nothing is queued: a window whose content is not mounted
+   * (minimized, other desktop) does not receive it. `options.from` is the sending window, passed
+   * to the listeners (default null). Throws `UNKNOWN_WINDOW` or `UNKNOWN_APP`.
+   */
+  send(
+    target: { windowId: WindowId } | { appId: AppId },
+    message: unknown,
+    options?: { from?: WindowId },
+  ): void;
+  /**
+   * Listens for messages sent to a window or an app; returns an unsubscribe function. Listeners
+   * of a window are dropped when it closes. Throws `UNKNOWN_WINDOW` or `UNKNOWN_APP`.
+   */
+  onMessage(
+    target: { windowId: WindowId } | { appId: AppId },
+    handler: (message: unknown, from: WindowId | null) => void,
+  ): () => void;
+  /**
+   * Opens the app named by `?open=<appId>&<params>`, passing the other parameters as the window's
+   * `data` (merged over an object `defaultData`). Returns the window id, or null when there is no
+   * `open` parameter, the app is unknown, or the app's instance limit is reached.
+   */
+  openFromUrl(url: string | URL | URLSearchParams): WindowId | null;
+  /**
+   * Builds the query string `?open=<appId>&<params>` that `openFromUrl` understands. For a window
+   * it uses the window's app. Throws `UNKNOWN_WINDOW` or `UNKNOWN_APP`.
+   */
+  toUrl(target: { windowId: WindowId } | { appId: AppId }, params?: Record<string, string>): string;
+
+  /** The current layout as a snapshot (what gets saved). */
+  serialize(): LayoutSnapshot;
+  /**
+   * Replaces the layout with a snapshot: unknown apps and windows `restore` refuses are skipped,
+   * missing icons are appended, windows are re-fitted to the current work area. Throws
+   * `INVALID_SNAPSHOT` for another version or a broken shape (nothing changes). A minimized
+   * window returns to the status in `minimizedFrom`; without it, to snapped, maximized or
+   * normal by a guess.
+   */
+  restoreLayout(snapshot: LayoutSnapshot): void;
+  /** Saves the layout now, skipping the debounce (waits for a pending load first). */
+  flush(): Promise<void>;
+  /** Removes every listener and cancels a pending save (call `flush` first to keep it). */
   destroy(): void;
 }
