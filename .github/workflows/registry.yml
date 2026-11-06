@@ -1,0 +1,55 @@
+# Publishes the registry site to GitHub Pages on every push to main (a release): the landing
+# page, the shadcn registry JSON (r/) and the Ladle playground (playground/).
+# Setup once: repo Settings → Pages → Source: "GitHub Actions".
+# To move the site, set two repository variables (Settings → Secrets and variables → Actions →
+# Variables):
+#   REGISTRY_BASE_URL  full URL of the JSON folder, such as https://example.com/wm/r
+#   SITE_BASE_PATH     path the site is served from, such as /wm/
+name: Registry
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      REGISTRY_BASE_URL: ${{ vars.REGISTRY_BASE_URL || format('https://{0}.github.io/{1}/r', github.repository_owner, github.event.repository.name) }}
+      SITE_BASE_PATH: ${{ vars.SITE_BASE_PATH || format('/{0}/', github.event.repository.name) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      # The generator reads the installed ui package's registry (node_modules/@integr8-media/ui/dist/registry).
+      - name: Ladle playground (served from <site>/playground/)
+        run: npx ladle build --config playground --outDir playground/dist --base "${SITE_BASE_PATH}playground/"
+      - name: Registry and landing page
+        run: node scripts/buildRegistry.mjs && node scripts/buildRegistrySite.mjs
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

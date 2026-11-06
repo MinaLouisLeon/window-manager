@@ -1,0 +1,19 @@
+# Publishes with npm Trusted Publishing
+# (npmjs.com: @integr8-media/window-manager → Settings → Trusted Publisher → workflow release.yml).
+# Set `provenance: true` below only if this repo is public. integr8-config has no v1 tag yet, so
+# this points at main.
+name: Release
+
+on:
+  push:
+    tags: ["v*.*.*"]
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    uses: MinaLouisLeon/integr8-config/.github/workflows/publish.yml@main
+    with:
+      provenance: false

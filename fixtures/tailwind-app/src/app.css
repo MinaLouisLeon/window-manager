@@ -1,0 +1,5 @@
+/* What a Tailwind v4 app does, as in the README. */
+@import "tailwindcss";
+@import "@integr8-media/ui/theme.css";
+@import "@integr8-media/window-manager/theme.css";
+@import "@integr8-media/ui/fonts.css";

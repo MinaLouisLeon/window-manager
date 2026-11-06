@@ -1,0 +1,14 @@
+node_modules/
+dist/
+coverage/
+docs/api/
+playground/dist/
+test-results/
+playwright-report/
+*.tgz
+*.log
+fixtures/*/package-lock.json
+fixtures/*/node_modules/
+fixtures/*/dist/
+site/
+.playwright-mcp/
