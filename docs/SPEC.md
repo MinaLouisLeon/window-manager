@@ -580,8 +580,8 @@ Updated by Claude Code after every finished task, in the same commit.
 | Milestone | Status | Branch | Notes |
 | --- | --- | --- | --- |
 | M0 Repo scaffold | Written, not yet verified | `feature/repo-scaffold` | All configs, entries, CSS, registry generator with ui import map (+ tests), Ladle with theme toolbar, fixtures skeleton, workflows, README stub. Not run yet: install, lint, typecheck, build, publint/attw, CSS build. Not implemented: per-item registry site pages (M11), shadcn-app fixture (M11), hook/shell size budgets (M6/M10). |
-| M1 Core store | Not started | | |
-| M2 Core geometry | Not started | | |
+| M1 Core store | Written, not yet verified | `feature/core-store` | `types.ts`, `errors.ts`, `createWindowManager.ts` (open, close + guards, focus layers, always on top, child/modal, minimize/maximize/restore/fullscreen, move/resize, update, cycleFocus (MRU), setViewport, events, subscribe), `geometry.ts` (workArea, clampBounds, cascade, needed by open/maximize), tests incl. a no-React/DOM/ui import check. Not run yet: typecheck, lint, tests, coverage. Not implemented (later milestones): desktops API, showDesktop, snap, messaging, persistence, tray/notifications; `WindowManager` type lists only the M1 methods so far. |
+| M2 Core geometry | Not started | | workArea, clampBounds and cascade already exist (from M1); still to do: zones, `zoneAtPoint`, `boundsForZone`, `snap`, drag-restore |
 | M3 Core desktops | Not started | | |
 | M4 Persistence | Not started | | |
 | M5 Messaging and deep links | Not started | | |
