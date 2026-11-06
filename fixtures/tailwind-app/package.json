@@ -1,0 +1,24 @@
+{
+  "name": "integr8-window-manager-fixture-tailwind",
+  "private": true,
+  "type": "module",
+  "description": "Fixture: a Tailwind v4 app that uses @integr8-media/window-manager/theme.css. Run from the repo root with `npm run fixtures`.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@integr8-media/ui": "^1.2.1",
+    "@integr8-media/window-manager": "file:../integr8-media-window-manager.tgz",
+    "lucide-react": "^1.47.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.4",
+    "@vitejs/plugin-react": "^5.0.0",
+    "tailwindcss": "^4.3.4",
+    "vite": "^7.1.0"
+  }
+}

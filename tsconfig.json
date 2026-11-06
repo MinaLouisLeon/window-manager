@@ -1,0 +1,5 @@
+{
+  "extends": "@integr8-media/config/tsconfig/react-library.json",
+  "include": ["src", "test", "playground", "fixtures/fixtures.spec.ts"],
+  "exclude": ["**/*.config.ts", "playground/dist"]
+}

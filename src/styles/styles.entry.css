@@ -1,0 +1,17 @@
+/*
+ * Entry for dist/styles.css: the prebuilt CSS for apps without Tailwind.
+ *
+ * It holds every class the components use, plus the --wm-* variables. It holds no tokens and no
+ * preflight: those come from @integr8-media/ui/styles.css, which the app imports first. The ui
+ * preset is imported as a `reference`, so Tailwind knows the token names (bg-card, text-muted-
+ * foreground, ...) without writing them out a second time.
+ */
+@layer theme, base, components, utilities;
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
+@import "@integr8-media/ui/theme.css" reference;
+@import "./wm.css";
+
+/* Scan the package source for the classes the components use. */
+@source "../";
+@source not "../**/*.test.{ts,tsx}";

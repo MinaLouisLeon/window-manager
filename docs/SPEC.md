@@ -579,7 +579,7 @@ Updated by Claude Code after every finished task, in the same commit.
 
 | Milestone | Status | Branch | Notes |
 | --- | --- | --- | --- |
-| M0 Repo scaffold | Not started | | |
+| M0 Repo scaffold | Written, not yet verified | `feature/repo-scaffold` | All configs, entries, CSS, registry generator with ui import map (+ tests), Ladle with theme toolbar, fixtures skeleton, workflows, README stub. Not run yet: install, lint, typecheck, build, publint/attw, CSS build. Not implemented: per-item registry site pages (M11), shadcn-app fixture (M11), hook/shell size budgets (M6/M10). |
 | M1 Core store | Not started | | |
 | M2 Core geometry | Not started | | |
 | M3 Core desktops | Not started | | |
