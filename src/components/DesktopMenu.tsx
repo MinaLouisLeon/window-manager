@@ -1,5 +1,6 @@
-import { ContextMenuContent, DropdownMenuContent } from '@integr8-media/ui';
+import { ContextMenuContent, cn, DropdownMenuContent } from '@integr8-media/ui';
 import type { ReactElement } from 'react';
+import { POPUP_LAYER, useTaskbarClearance } from '../react/taskbarClearance';
 import { useDesktopMenu } from '../react/useDesktopMenu';
 import { MenuItems, type MenuVariant } from './MenuItems';
 
@@ -17,16 +18,18 @@ export interface DesktopMenuProps {
  */
 export function DesktopMenu({ variant = 'context', className }: DesktopMenuProps): ReactElement {
   const { items } = useDesktopMenu();
-  const classProps = className === undefined ? {} : { className };
+  // The content only exists while the menu is open: keep it clear of the taskbar and on screen.
+  const collisionPadding = useTaskbarClearance(true);
+  const layerProps = { className: cn(POPUP_LAYER, className), collisionPadding };
   if (variant === 'dropdown') {
     return (
-      <DropdownMenuContent {...classProps}>
+      <DropdownMenuContent {...layerProps}>
         <MenuItems items={items} variant="dropdown" />
       </DropdownMenuContent>
     );
   }
   return (
-    <ContextMenuContent {...classProps}>
+    <ContextMenuContent {...layerProps}>
       <MenuItems items={items} variant="context" />
     </ContextMenuContent>
   );
