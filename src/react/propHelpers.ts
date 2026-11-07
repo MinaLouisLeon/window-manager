@@ -40,3 +40,26 @@ export function composeRefs(
     };
   };
 }
+
+/** One callback ref that sets every given ref (callback refs and ref objects). */
+export function mergeRefs<T>(
+  ...refs: (RefCallback<T> | { current: T | null } | null | undefined)[]
+): RefCallback<T> {
+  return (node) => {
+    const cleanups: (() => void)[] = [];
+    for (const ref of refs) {
+      if (typeof ref === 'function') {
+        const cleanup = ref(node);
+        cleanups.push(typeof cleanup === 'function' ? cleanup : () => ref(null));
+      } else if (ref) {
+        ref.current = node;
+        cleanups.push(() => {
+          ref.current = null;
+        });
+      }
+    }
+    return () => {
+      for (const cleanup of cleanups) cleanup();
+    };
+  };
+}

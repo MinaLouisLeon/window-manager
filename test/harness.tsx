@@ -41,3 +41,29 @@ export function createWrapper(
     );
   };
 }
+
+/**
+ * Makes every element report `width` × `height` as its client size (jsdom has no layout), so a
+ * `Desktop` measures a viewport. Returns a function that puts the real getters back.
+ */
+export function stubSurfaceSize(width: number, height: number): () => void {
+  const names = ['clientWidth', 'clientHeight'] as const;
+  const originals = names.map((name) =>
+    Object.getOwnPropertyDescriptor(HTMLElement.prototype, name),
+  );
+  Object.defineProperty(HTMLElement.prototype, 'clientWidth', {
+    configurable: true,
+    get: () => width,
+  });
+  Object.defineProperty(HTMLElement.prototype, 'clientHeight', {
+    configurable: true,
+    get: () => height,
+  });
+  return () => {
+    names.forEach((name, index) => {
+      const original = originals[index];
+      if (original) Object.defineProperty(HTMLElement.prototype, name, original);
+      else Reflect.deleteProperty(HTMLElement.prototype, name);
+    });
+  };
+}

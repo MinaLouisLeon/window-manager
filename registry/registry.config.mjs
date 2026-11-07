@@ -45,6 +45,7 @@ export default {
       'WindowMenu',
       'SnapPreview',
       'CloseGuardDialog',
+      'MenuItems',
       'SnapLayoutsMenu',
     ],
     shell: [
