@@ -2,6 +2,34 @@
  * React entry of `@integr8-media/window-manager`: `WindowManagerProvider`, every hook and every
  * component, plus the core types. The public API is added milestone by milestone (M6 to M10).
  */
+export type { CloseGuardDialogProps } from './components/CloseGuardDialog';
+export { CloseGuardDialog } from './components/CloseGuardDialog';
+export type { DesktopProps } from './components/Desktop';
+export { Desktop } from './components/Desktop';
+export type { DesktopIconsProps } from './components/DesktopIcons';
+export { DesktopIcons } from './components/DesktopIcons';
+export type { DesktopMenuProps } from './components/DesktopMenu';
+export { DesktopMenu } from './components/DesktopMenu';
+export type { DesktopSwitcherProps } from './components/DesktopSwitcher';
+export { DesktopSwitcher } from './components/DesktopSwitcher';
+export type { SnapPreviewProps } from './components/SnapPreview';
+export { SnapPreview } from './components/SnapPreview';
+export type { StartMenuProps } from './components/StartMenu';
+export { StartMenu } from './components/StartMenu';
+export type { TaskbarProps } from './components/Taskbar';
+export { Taskbar } from './components/Taskbar';
+export type { WindowProps } from './components/Window';
+export { Window } from './components/Window';
+export type { WindowControlsProps } from './components/WindowControls';
+export { WindowControls } from './components/WindowControls';
+export type { WindowManagerShellProps } from './components/WindowManagerShell';
+export { WindowManagerShell } from './components/WindowManagerShell';
+export type { WindowMenuProps } from './components/WindowMenu';
+export { WindowMenu } from './components/WindowMenu';
+export type { WindowSwitcherProps } from './components/WindowSwitcher';
+export { WindowSwitcher } from './components/WindowSwitcher';
+export type { WindowTitleBarProps } from './components/WindowTitleBar';
+export { WindowTitleBar } from './components/WindowTitleBar';
 export type * from './core/types';
 export type { MenuItemModel } from './react/menuModel';
 export type { FrameControlProps, FrameProps } from './react/propHelpers';

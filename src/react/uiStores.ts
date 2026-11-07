@@ -25,12 +25,21 @@ export interface MenuRegistry {
   desktopItems: { key: number; items: MenuItemModel[] }[];
 }
 
+/** A window with unsaved changes that is waiting for an answer to "close anyway?". */
+export interface CloseRequest {
+  windowId: WindowId;
+  /** Settles the close guard: true lets the window close, false keeps it open. */
+  resolve(allow: boolean): void;
+}
+
 /** UI state shared between hooks and components; one set per `WindowManagerProvider`. */
 export interface UiStores {
   snapPreview: ExternalStore<SnapPreviewState>;
   switcher: ExternalStore<SwitcherState>;
   startMenu: ExternalStore<StartMenuState>;
   menus: ExternalStore<MenuRegistry>;
+  /** The close question the `CloseGuardDialog` is showing (null: none). */
+  closeRequest: ExternalStore<CloseRequest | null>;
 }
 
 /** The switcher's closed state. */
@@ -43,5 +52,6 @@ export function createUiStores(): UiStores {
     switcher: createExternalStore<SwitcherState>(SWITCHER_CLOSED),
     startMenu: createExternalStore<StartMenuState>({ open: false, search: '' }),
     menus: createExternalStore<MenuRegistry>({ windowItems: [], desktopItems: [] }),
+    closeRequest: createExternalStore<CloseRequest | null>(null),
   };
 }

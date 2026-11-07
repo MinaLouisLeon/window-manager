@@ -4,6 +4,7 @@ import { defineConfig, devices } from '@playwright/test';
 const APPS = [
   { name: 'tailwind-app', port: 61_201 },
   { name: 'plain-app', port: 61_202 },
+  { name: 'shadcn-app', port: 61_203 },
 ] as const;
 
 export default defineConfig({
