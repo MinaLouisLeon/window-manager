@@ -1,6 +1,6 @@
 {
   "name": "@integr8-media/window-manager",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "A full mini desktop for any React app: floating windows, snapping, multiple desktops, desktop icons, a taskbar, a start menu, switchers, menus, messaging, deep links and saved layouts. Built on @integr8-media/ui.",
   "license": "MIT",
   "author": "Mina Louis Leon",
