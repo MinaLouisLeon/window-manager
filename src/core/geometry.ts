@@ -1,5 +1,16 @@
 import type { Bounds, Insets, Point, Size, SnapZone } from './types';
 
+/** Smallest size of a window whose app sets no `size.min`. */
+export const DEFAULT_MIN_SIZE: Size = { width: 240, height: 160 };
+/** Pixels of a title bar that stay in the work area when `minVisibleTitleBar` is not set. */
+export const DEFAULT_MIN_VISIBLE_TITLE_BAR = 48;
+
+/** Pixels from an edge of the work area that start a snap preview while dragging. */
+export const DEFAULT_SNAP_THRESHOLD = 16;
+
+/** Which edge or corner of a window is being dragged to resize it. */
+export type ResizeEdge = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw';
+
 /** Column and row span of each zone, as fractions of the area: [startX, endX, startY, endY]. */
 const ZONE_SPANS: Record<SnapZone, readonly [number, number, number, number]> = {
   left: [0, 1 / 2, 0, 1],
@@ -50,6 +61,43 @@ export function clampBounds(
     width,
     height,
   };
+}
+
+/**
+ * Bounds of a window whose `edge` was dragged by (`dx`, `dy`) from `start`. The opposite edges stay
+ * put; the size stays within `min` and `max` (min wins), and the top edge never goes above `area`.
+ */
+export function resizeBounds(
+  start: Bounds,
+  edge: ResizeEdge,
+  dx: number,
+  dy: number,
+  rules: { min: Size; max?: Size },
+  area: Bounds,
+): Bounds {
+  const maxWidth = rules.max?.width ?? Number.POSITIVE_INFINITY;
+  const maxHeight = rules.max?.height ?? Number.POSITIVE_INFINITY;
+  const fitWidth = (value: number): number => Math.max(rules.min.width, Math.min(maxWidth, value));
+  const fitHeight = (value: number): number =>
+    Math.max(rules.min.height, Math.min(maxHeight, value));
+
+  let { x, y, width, height } = start;
+  if (edge.includes('e')) {
+    width = fitWidth(start.width + dx);
+  }
+  if (edge.includes('w')) {
+    width = fitWidth(start.width - dx);
+    x = start.x + start.width - width;
+  }
+  if (edge.includes('s')) {
+    height = fitHeight(start.height + dy);
+  }
+  if (edge.includes('n')) {
+    const top = Math.max(area.y, start.y + dy);
+    height = fitHeight(start.y + start.height - top);
+    y = start.y + start.height - height;
+  }
+  return { x, y, width, height };
 }
 
 /**
