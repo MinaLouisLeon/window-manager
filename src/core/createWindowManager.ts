@@ -1,5 +1,8 @@
+import { buildDeepLink, parseDeepLink } from './deepLinks';
 import { WindowManagerError } from './errors';
 import { boundsForZone, cascade, clampBounds, workArea } from './geometry';
+import { createMessageBus } from './messaging';
+import { parseSnapshot } from './persistence';
 import type {
   AppDefinition,
   AppId,
@@ -8,12 +11,12 @@ import type {
   DesktopId,
   EventPayload,
   Insets,
+  LayoutSnapshot,
   ManagerState,
   OpenOptions,
   Point,
   ShellSettings,
   Size,
-  SnapZone,
   WindowId,
   WindowManager,
   WindowManagerEvent,
@@ -148,8 +151,34 @@ export function createWindowManager(options: WindowManagerOptions): WindowManage
   const maximizedBeforeFullscreen = new Set<WindowId>();
   /** Most recently focused first. */
   let recent: WindowId[] = [];
+  let nextDesktopNumber = desktops.length + 1;
+  const bus = createMessageBus();
+  /** False until `setViewport` ran; a layout restored before that is fitted by the first call. */
+  let viewportSet = false;
+  /** Per desktop: the windows `showDesktop(true)` minimized and the window that had focus. */
+  const showing = new Map<DesktopId, { ids: WindowId[]; focus: WindowId | null }>();
 
   // ---------- helpers ----------
+
+  function needDesktop(draft: ManagerState, id: DesktopId): Desktop {
+    const desktop = draft.desktops.find((entry) => entry.id === id);
+    if (!desktop) throw new WindowManagerError('UNKNOWN_DESKTOP', `Unknown desktop "${id}".`);
+    return desktop;
+  }
+
+  function checkApps(appIds: AppId[]): AppId[] {
+    for (const appId of appIds) getApp(appId);
+    return [...new Set(appIds)];
+  }
+
+  /** `first`, then the entries of `current` it does not mention, in their current order. */
+  function withRest(first: AppId[], current: readonly AppId[]): AppId[] {
+    return [...first, ...current.filter((appId) => !first.includes(appId))];
+  }
+
+  function sameList(a: readonly string[], b: readonly string[]): boolean {
+    return a.length === b.length && a.every((value, i) => value === b[i]);
+  }
 
   function getApp(appId: AppId): AppDefinition {
     const app = apps.get(appId);
@@ -225,6 +254,10 @@ export function createWindowManager(options: WindowManagerOptions): WindowManage
   function commit(next: ManagerState): void {
     const prev = state;
     normalize(next);
+    for (const desktopId of [...showing.keys()]) {
+      if (!next.desktops.some((desktop) => desktop.id === desktopId)) showing.delete(desktopId);
+    }
+    next.showingDesktop = showing.has(next.activeDesktopId);
 
     const closed = prev.order.filter((id) => !next.windows[id]);
     const opened = next.order.filter((id) => !prev.windows[id]);
@@ -249,6 +282,10 @@ export function createWindowManager(options: WindowManagerOptions): WindowManage
       !desktopChanged &&
       !shellChanged &&
       !orderChanged &&
+      prev.desktops === next.desktops &&
+      prev.iconOrder === next.iconOrder &&
+      prev.pinnedApps === next.pinnedApps &&
+      prev.showingDesktop === next.showingDesktop &&
       sameSize(prev.viewport, next.viewport) &&
       sameInsets(prev.insets, next.insets)
     ) {
@@ -261,11 +298,13 @@ export function createWindowManager(options: WindowManagerOptions): WindowManage
     }
     for (const id of closed) {
       guards.delete(id);
+      bus.dropWindow(id);
       statusBeforeMinimize.delete(id);
       maximizedBeforeFullscreen.delete(id);
     }
 
     state = next;
+    if (persistedChanged(prev, next)) scheduleSave();
     for (const listener of [...listeners]) listener(state);
 
     for (const id of closed) {
@@ -330,7 +369,7 @@ export function createWindowManager(options: WindowManagerOptions): WindowManage
     for (;;) {
       const parentId: WindowId | null = need(draft, root).parentId;
       const parent = parentId !== null ? draft.windows[parentId] : undefined;
-      if (!parent || parent.status !== 'minimized') return root;
+      if (parent?.status !== 'minimized') return root;
       root = parent.id;
     }
   }
@@ -342,6 +381,7 @@ export function createWindowManager(options: WindowManagerOptions): WindowManage
       restoreTree(draft, minimizedRoot(draft, target));
     }
     const win = need(draft, target);
+    showing.delete(win.desktopId); // focusing a window ends "show desktop" there
     draft.activeDesktopId = win.desktopId;
     raiseGroup(draft, target);
     draft.focusedId = target;
@@ -384,6 +424,150 @@ export function createWindowManager(options: WindowManagerOptions): WindowManage
     maximizedBeforeFullscreen.delete(id);
     if (win.status === 'normal' && win.snap === null) return;
     setWindow(draft, toNormal(draft, win));
+  }
+
+  /** Fits every window to the current work area (used after the viewport or a layout changes). */
+  function refit(draft: ManagerState): void {
+    const area = areaOf(draft);
+    for (const win of Object.values(draft.windows)) {
+      const effective: WindowStatus =
+        win.status === 'minimized' ? (statusBeforeMinimize.get(win.id) ?? 'normal') : win.status;
+      const rules = rulesFor(getApp(win.appId));
+      const restoreBounds = win.restoreBounds ? clampBounds(win.restoreBounds, area, rules) : null;
+      if (effective === 'maximized') {
+        setWindow(draft, { ...win, bounds: area, restoreBounds });
+      } else if (effective === 'fullscreen') {
+        setWindow(draft, { ...win, bounds: fullViewport(draft), restoreBounds });
+      } else {
+        // A snapped window keeps its zone, so it is fitted to the new area, not just clamped.
+        const target = win.snap !== null ? boundsForZone(win.snap, area) : win.bounds;
+        setWindow(draft, { ...win, bounds: clampBounds(target, area, rules), restoreBounds });
+      }
+    }
+  }
+
+  /** Replaces the layout with a snapshot. Throws `INVALID_SNAPSHOT` before changing anything. */
+  function applySnapshot(raw: unknown): void {
+    const snapshot = parseSnapshot(raw);
+    const desktopList: Desktop[] = snapshot.desktops.map((desktop) => ({
+      id: desktop.id,
+      name: desktop.name,
+      wallpaper: desktop.wallpaper ?? null,
+    }));
+    const desktopIds = new Set(desktopList.map((desktop) => desktop.id));
+
+    let kept = snapshot.windows.filter(
+      (win) =>
+        apps.has(win.appId) && desktopIds.has(win.desktopId) && (options.restore?.(win) ?? true),
+    );
+    for (;;) {
+      const ids = new Set(kept.map((win) => win.id));
+      const next = kept.filter((win) => win.parentId === null || ids.has(win.parentId));
+      if (next.length === kept.length) break;
+      kept = next;
+    }
+    const byId = new Map(kept.map((win) => [win.id, win]));
+
+    const draft = begin();
+    guards.clear();
+    statusBeforeMinimize.clear();
+    maximizedBeforeFullscreen.clear();
+    showing.clear();
+    recent = [];
+
+    draft.windows = {};
+    draft.order = [];
+    let highest = 0;
+    for (const saved of kept) {
+      const parent = saved.parentId !== null ? byId.get(saved.parentId) : undefined;
+      const win: WindowState = {
+        ...saved,
+        bounds: { ...saved.bounds },
+        restoreBounds: saved.restoreBounds ? { ...saved.restoreBounds } : null,
+        // A child always lives on its parent's desktop.
+        desktopId: parent ? parent.desktopId : saved.desktopId,
+      };
+      if (win.status === 'minimized') {
+        // Older snapshots have no `minimizedFrom`; snapped or maximized is then the best guess.
+        statusBeforeMinimize.set(
+          win.id,
+          snapshot.minimizedFrom?.[win.id] ??
+            (win.snap !== null || win.restoreBounds === null ? 'normal' : 'maximized'),
+        );
+      }
+      draft.windows[win.id] = win;
+      draft.order.push(win.id);
+      const number = /^window-(\d+)$/.exec(win.id)?.[1];
+      if (number !== undefined) highest = Math.max(highest, Number(number));
+    }
+    nextWindowNumber = Math.max(nextWindowNumber, highest + 1);
+
+    draft.desktops = desktopList;
+    nextDesktopNumber = desktopList.length + 1;
+    draft.activeDesktopId = desktopIds.has(snapshot.activeDesktopId)
+      ? snapshot.activeDesktopId
+      : (desktopList[0] as Desktop).id;
+    const listed = checkKnown(snapshot.iconOrder);
+    draft.iconOrder = [
+      ...listed,
+      ...options.apps
+        .filter((app) => app.placement?.desktop !== false && !listed.includes(app.id))
+        .map((app) => app.id),
+    ];
+    draft.pinnedApps = checkKnown(snapshot.pinnedApps);
+    draft.shell = { ...snapshot.shell };
+
+    if (viewportSet) refit(draft);
+    draft.focusedId = null;
+    focusNext(draft, draft.activeDesktopId, null);
+    commit(draft);
+  }
+
+  function checkKnown(appIds: AppId[]): AppId[] {
+    return [...new Set(appIds.filter((appId) => apps.has(appId)))];
+  }
+
+  // ---------- saving ----------
+
+  const storage = options.storage;
+  const saveDebounceMs = options.saveDebounceMs ?? 500;
+  let destroyed = false;
+  /** Saving waits until the first load finished, so an empty start never overwrites a layout. */
+  let loaded = storage === undefined;
+  let loading: Promise<void> | null = null;
+  let saveTimer: ReturnType<typeof setTimeout> | undefined;
+
+  function clearSaveTimer(): void {
+    if (saveTimer !== undefined) clearTimeout(saveTimer);
+    saveTimer = undefined;
+  }
+
+  function scheduleSave(): void {
+    if (!storage || !loaded || destroyed) return;
+    clearSaveTimer();
+    saveTimer = setTimeout(() => {
+      saveTimer = undefined;
+      void (async () => {
+        try {
+          await storage.save(manager.serialize());
+        } catch {
+          // A failed background save is dropped; `flush` reports errors to its caller.
+        }
+      })();
+    }, saveDebounceMs);
+  }
+
+  /** True when something that goes into a snapshot differs. */
+  function persistedChanged(prev: ManagerState, next: ManagerState): boolean {
+    return (
+      prev.desktops !== next.desktops ||
+      prev.iconOrder !== next.iconOrder ||
+      prev.pinnedApps !== next.pinnedApps ||
+      prev.activeDesktopId !== next.activeDesktopId ||
+      !sameShell(prev.shell, next.shell) ||
+      prev.order.length !== next.order.length ||
+      prev.order.some((id, i) => id !== next.order[i] || prev.windows[id] !== next.windows[id])
+    );
   }
 
   // ---------- manager ----------
@@ -724,33 +908,329 @@ export function createWindowManager(options: WindowManagerOptions): WindowManage
       const draft = begin();
       draft.viewport = { width: size.width, height: size.height };
       if (insets) draft.insets = { ...insets };
-      const area = areaOf(draft);
-      for (const win of Object.values(draft.windows)) {
-        const effective: WindowStatus =
-          win.status === 'minimized' ? (statusBeforeMinimize.get(win.id) ?? 'normal') : win.status;
-        const rules = rulesFor(getApp(win.appId));
-        const restoreBounds = win.restoreBounds
-          ? clampBounds(win.restoreBounds, area, rules)
-          : null;
-        if (effective === 'maximized') {
-          setWindow(draft, { ...win, bounds: area, restoreBounds });
-        } else if (effective === 'fullscreen') {
-          setWindow(draft, { ...win, bounds: fullViewport(draft), restoreBounds });
-        } else {
-          // A snapped window keeps its zone, so it is fitted to the new area, not just clamped.
-          const target = win.snap !== null ? boundsForZone(win.snap, area) : win.bounds;
-          setWindow(draft, { ...win, bounds: clampBounds(target, area, rules), restoreBounds });
+      viewportSet = true;
+      refit(draft);
+      commit(draft);
+    },
+
+    send(target, message, sendOptions) {
+      const from = sendOptions?.from ?? null;
+      if (from !== null) need(state, from);
+      const recipients = [...bus.handlersFor(target)];
+      if ('windowId' in target) {
+        need(state, target.windowId);
+      } else {
+        getApp(target.appId);
+        for (const id of state.order) {
+          if (state.windows[id]?.appId === target.appId) {
+            recipients.push(...bus.handlersFor({ windowId: id }));
+          }
         }
+      }
+      for (const handler of recipients) handler(message, from);
+      emit('message', { target, message, from });
+    },
+
+    onMessage(target, handler) {
+      if ('windowId' in target) need(state, target.windowId);
+      else getApp(target.appId);
+      return bus.subscribe(target, handler);
+    },
+
+    openFromUrl(url) {
+      const link = parseDeepLink(url);
+      if (link === null || !apps.has(link.appId)) return null;
+      const app = getApp(link.appId);
+      const hasParams = Object.keys(link.params).length > 0;
+      const base = app.defaultData;
+      const data = !hasParams
+        ? undefined
+        : typeof base === 'object' && base !== null && !Array.isArray(base)
+          ? { ...base, ...link.params }
+          : link.params;
+      try {
+        return manager.open({ appId: link.appId, ...(data !== undefined ? { data } : {}) });
+      } catch (error) {
+        if (error instanceof WindowManagerError && error.code === 'MAX_INSTANCES') return null;
+        throw error;
+      }
+    },
+
+    toUrl(target, params) {
+      if ('windowId' in target) {
+        return buildDeepLink(need(state, target.windowId).appId, params);
+      }
+      return buildDeepLink(getApp(target.appId).id, params);
+    },
+
+    serialize() {
+      const minimizedFrom: Record<WindowId, RestorableStatus> = {};
+      for (const win of Object.values(state.windows)) {
+        if (win.status === 'minimized') {
+          minimizedFrom[win.id] = statusBeforeMinimize.get(win.id) ?? 'normal';
+        }
+      }
+      return {
+        version: 1,
+        ...(Object.keys(minimizedFrom).length > 0 ? { minimizedFrom } : {}),
+        desktops: state.desktops.map((desktop) => ({ ...desktop })),
+        activeDesktopId: state.activeDesktopId,
+        windows: state.order.flatMap((id) => {
+          const win = state.windows[id];
+          return win ? [{ ...win }] : [];
+        }),
+        iconOrder: [...state.iconOrder],
+        pinnedApps: [...state.pinnedApps],
+        shell: { ...state.shell },
+      };
+    },
+
+    restoreLayout(snapshot) {
+      applySnapshot(snapshot);
+      emit('layout:restored', { ok: true });
+    },
+
+    async flush() {
+      if (!storage) return;
+      if (loading) await loading;
+      clearSaveTimer();
+      if (destroyed) return;
+      await storage.save(manager.serialize());
+    },
+
+    showDesktop(on) {
+      const active = state.activeDesktopId;
+      const entry = showing.get(active);
+      const enable = on ?? entry === undefined;
+      const draft = begin();
+      if (enable) {
+        if (entry) return;
+        const ids: WindowId[] = [];
+        for (const id of draft.order) {
+          const win = draft.windows[id];
+          if (!win || win.desktopId !== active || win.status === 'minimized') continue;
+          statusBeforeMinimize.set(id, win.status);
+          setWindow(draft, { ...win, status: 'minimized' });
+          ids.push(id);
+        }
+        showing.set(active, { ids, focus: draft.focusedId });
+        draft.focusedId = null;
+      } else {
+        if (!entry) return;
+        showing.delete(active);
+        const restored: WindowId[] = [];
+        for (const id of entry.ids) {
+          const win = draft.windows[id];
+          if (!win || win.desktopId !== active || win.status !== 'minimized') continue;
+          setWindow(draft, { ...win, status: statusBeforeMinimize.get(id) ?? 'normal' });
+          statusBeforeMinimize.delete(id);
+          restored.push(id);
+        }
+        const target =
+          entry.focus !== null && restored.includes(entry.focus)
+            ? entry.focus
+            : [...draft.order].reverse().find((id) => restored.includes(id));
+        if (target !== undefined) applyFocus(draft, target);
       }
       commit(draft);
     },
 
+    addDesktop(name) {
+      const draft = begin();
+      let number = nextDesktopNumber;
+      while (draft.desktops.some((desktop) => desktop.id === `desktop-${number}`)) number += 1;
+      nextDesktopNumber = number + 1;
+      const id = `desktop-${number}`;
+      draft.desktops = [
+        ...draft.desktops,
+        { id, name: name ?? `Desktop ${number}`, wallpaper: null },
+      ];
+      commit(draft);
+      return id;
+    },
+
+    renameDesktop(id, name) {
+      const draft = begin();
+      const desktop = needDesktop(draft, id);
+      if (desktop.name === name) return;
+      draft.desktops = draft.desktops.map((entry) =>
+        entry.id === id ? { ...entry, name } : entry,
+      );
+      commit(draft);
+    },
+
+    async removeDesktop(id, removeOptions) {
+      needDesktop(state, id);
+      if (state.desktops.length === 1) {
+        throw new WindowManagerError('LAST_DESKTOP', 'The last desktop cannot be removed.');
+      }
+      const requested = removeOptions?.moveWindowsTo;
+      // Moving windows onto the desktop being removed makes no sense, so it counts as not given.
+      const moveTo = requested === id ? undefined : requested;
+      if (moveTo !== undefined) {
+        needDesktop(state, moveTo);
+      } else {
+        for (const wid of state.order) {
+          const guard = state.windows[wid]?.desktopId === id ? guards.get(wid) : undefined;
+          if (guard && !(await guard())) return false;
+        }
+      }
+
+      const draft = begin();
+      const index = draft.desktops.findIndex((desktop) => desktop.id === id);
+      if (index === -1 || draft.desktops.length === 1) return true; // changed while guards ran
+      if (moveTo !== undefined) needDesktop(draft, moveTo);
+      const wasActive = draft.activeDesktopId === id;
+      const onDesktop = draft.order.filter((wid) => draft.windows[wid]?.desktopId === id);
+      if (moveTo !== undefined) {
+        for (const wid of onDesktop) {
+          const win = need(draft, wid);
+          setWindow(draft, { ...win, desktopId: moveTo });
+        }
+      } else {
+        for (const wid of onDesktop) delete draft.windows[wid];
+        draft.order = draft.order.filter((wid) => draft.windows[wid] !== undefined);
+      }
+      draft.desktops = draft.desktops.filter((desktop) => desktop.id !== id);
+      if (wasActive) {
+        const fallback = (draft.desktops[index - 1] ?? draft.desktops[index]) as Desktop;
+        draft.activeDesktopId = moveTo ?? fallback.id;
+        focusNext(draft, draft.activeDesktopId, null);
+      }
+      commit(draft);
+      return true;
+    },
+
+    switchDesktop(id) {
+      const draft = begin();
+      needDesktop(draft, id);
+      if (draft.activeDesktopId === id) return;
+      draft.activeDesktopId = id;
+      focusNext(draft, id, null);
+      commit(draft);
+    },
+
+    moveToDesktop(windowId, desktopId) {
+      const draft = begin();
+      needDesktop(draft, desktopId);
+      let root = need(draft, windowId);
+      while (root.parentId !== null) root = need(draft, root.parentId);
+      if (root.desktopId === desktopId) return;
+      for (const wid of [root.id, ...descendantsOf(draft.windows, root.id)]) {
+        setWindow(draft, { ...need(draft, wid), desktopId });
+      }
+      const focused = draft.focusedId !== null ? draft.windows[draft.focusedId] : undefined;
+      if (focused && focused.desktopId !== draft.activeDesktopId) {
+        focusNext(draft, draft.activeDesktopId, null);
+      }
+      commit(draft);
+    },
+
+    setWallpaper(desktopId, wallpaper) {
+      const draft = begin();
+      needDesktop(draft, desktopId);
+      draft.desktops = draft.desktops.map((entry) =>
+        entry.id === desktopId ? { ...entry, wallpaper } : entry,
+      );
+      commit(draft);
+    },
+
+    setIconOrder(appIds) {
+      const next = withRest(checkApps(appIds), state.iconOrder);
+      if (sameList(next, state.iconOrder)) return;
+      const draft = begin();
+      draft.iconOrder = next;
+      commit(draft);
+    },
+
+    pinApp(appId, index) {
+      getApp(appId);
+      const already = state.pinnedApps.includes(appId);
+      if (already && index === undefined) return;
+      const rest = state.pinnedApps.filter((id) => id !== appId);
+      const at =
+        index === undefined || !Number.isFinite(index)
+          ? rest.length
+          : Math.max(0, Math.min(Math.trunc(index), rest.length));
+      const next = [...rest.slice(0, at), appId, ...rest.slice(at)];
+      if (sameList(next, state.pinnedApps)) return;
+      const draft = begin();
+      draft.pinnedApps = next;
+      commit(draft);
+    },
+
+    unpinApp(appId) {
+      if (!state.pinnedApps.includes(appId)) return;
+      const draft = begin();
+      draft.pinnedApps = state.pinnedApps.filter((id) => id !== appId);
+      commit(draft);
+    },
+
+    setPinnedOrder(appIds) {
+      const next = withRest(checkApps(appIds), state.pinnedApps);
+      if (sameList(next, state.pinnedApps)) return;
+      const draft = begin();
+      draft.pinnedApps = next;
+      commit(draft);
+    },
+
+    setShellSettings(patch) {
+      const next: ShellSettings = { ...state.shell };
+      if (patch.taskbarPosition !== undefined) next.taskbarPosition = patch.taskbarPosition;
+      if (patch.taskbarAutoHide !== undefined) next.taskbarAutoHide = patch.taskbarAutoHide;
+      if (patch.controlsStyle !== undefined) next.controlsStyle = patch.controlsStyle;
+      if (sameShell(state.shell, next)) return;
+      const draft = begin();
+      draft.shell = next;
+      commit(draft);
+    },
+
     destroy() {
+      destroyed = true;
+      clearSaveTimer();
       listeners.clear();
       handlers.clear();
       guards.clear();
+      showing.clear();
+      bus.clear();
     },
   };
+
+  // ---------- loading ----------
+
+  function finishLoad(snapshot: LayoutSnapshot | null, failed: boolean): void {
+    if (destroyed) return;
+    let ok = !failed;
+    if (ok && snapshot !== null) {
+      try {
+        applySnapshot(snapshot);
+        emit('layout:restored', { ok: true });
+        ok = true;
+      } catch {
+        ok = false;
+      }
+    }
+    loaded = true;
+    if (!ok) emit('layout:restored', { ok: false });
+  }
+
+  if (storage) {
+    let result: LayoutSnapshot | null | Promise<LayoutSnapshot | null> = null;
+    let failed = false;
+    try {
+      result = storage.load();
+    } catch {
+      failed = true;
+    }
+    if (result instanceof Promise) {
+      loading = result.then(
+        (snapshot) => finishLoad(snapshot, false),
+        () => finishLoad(null, true),
+      );
+    } else {
+      finishLoad(result, failed);
+    }
+  }
 
   return manager;
 }
