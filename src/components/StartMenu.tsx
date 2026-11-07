@@ -13,6 +13,7 @@ import {
 import type { CSSProperties, ReactElement } from 'react';
 import type { TaskbarPosition } from '../core/types';
 import { AppIcon } from '../react/AppIcon';
+import { POPUP_LAYER, useTaskbarClearance } from '../react/taskbarClearance';
 import { useStartMenu } from '../react/useStartMenu';
 import { useWindowManager } from '../react/useWindowManager';
 
@@ -50,6 +51,7 @@ export function StartMenu({
 }: StartMenuProps): ReactElement {
   const menu = useStartMenu();
   const { state: position } = useWindowManager((state) => state.shell.taskbarPosition);
+  const clearance = useTaskbarClearance(menu.open);
 
   return (
     <Popover open={menu.open} onOpenChange={menu.setOpen}>
@@ -63,7 +65,8 @@ export function StartMenu({
         side={SIDE[position]}
         align="start"
         data-wm-start-menu=""
-        className={cn('w-80 p-0', className)}
+        collisionPadding={clearance}
+        className={cn('w-80 p-0', POPUP_LAYER, className)}
         style={style}
         onInteractOutside={(event) => {
           // Pressing the start button while the menu is open closes it through the button's own
