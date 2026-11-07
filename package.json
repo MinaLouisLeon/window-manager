@@ -1,6 +1,6 @@
 {
   "name": "@integr8-media/window-manager",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "A full mini desktop for any React app: floating windows, snapping, multiple desktops, desktop icons, a taskbar, a start menu, switchers, menus, messaging, deep links and saved layouts. Built on @integr8-media/ui.",
   "license": "MIT",
   "author": "Mina Louis Leon",
@@ -41,7 +41,8 @@
     "build:css": "tailwindcss --input src/styles/styles.entry.css --output dist/styles.css --minify",
     "build:registry": "node scripts/buildRegistry.mjs",
     "build:registry-site": "node scripts/buildRegistry.mjs && node scripts/buildRegistrySite.mjs",
-    "site:build": "ladle build --config playground --outDir playground/dist && npm run build:registry-site",
+    "site:build": "ladle build --config playground --outDir playground/dist --base /playground/ && npm run build:registry-site",
+    "site": "npm run site:build && node scripts/serveSite.mjs",
     "size": "size-limit",
     "fixtures": "node scripts/fixtures.mjs",
     "playground": "ladle serve --config playground",

@@ -1,12 +1,12 @@
-// Builds the static registry site into site/:
-//   site/index.html                    landing page: setup and the item list by category
-//   site/components/<name>/index.html  one page per item: install command, dependencies, live
-//                                      stories from the playground and the source files
+// Builds the static registry site into site/, in the same look as the integr8-ui site:
+//   site/index.html                    landing page (scripts/registryPage.mjs)
+//   site/components/<name>/index.html  one documentation page per item (scripts/itemPage.mjs)
 //   site/r/                            the registry JSON files (from dist/registry/)
+//   site/assets/fonts.css              self-hosted fonts (copied from the installed ui package)
 //   site/playground/                   the Ladle playground (from playground/dist/), if built
 //
-// .github/workflows/registry.yml deploys site/ to GitHub Pages. The playground is optional:
-// without it the item pages have no live previews.
+// .github/workflows/registry.yml deploys site/ to GitHub Pages. The fonts and the playground are
+// optional: without them the pages fall back to system fonts and have no live previews.
 //
 // Usage: node scripts/buildRegistry.mjs && node scripts/buildRegistrySite.mjs
 
@@ -15,17 +15,26 @@ import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import config from '../registry/registry.config.mjs';
+import { itemDocs, itemNameFromUrl, renderItemPage } from './itemPage.mjs';
 import { resolveBaseUrl } from './registryItems.mjs';
+import { renderRegistryPage } from './registryPage.mjs';
+import { groupItems } from './siteLayout.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const registryDir = join(root, 'dist', 'registry');
 const playgroundDir = join(root, 'playground', 'dist');
+// The ui package ships its self-hosted fonts next to its registry.
+const uiDistDir = dirname(join(root, config.ui.registryDir));
 const siteDir = join(root, 'site');
+const docsPath = 'components/';
 
 const pkgJson = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'));
 const index = JSON.parse(await readFile(join(registryDir, 'registry.json'), 'utf8'));
 const baseUrl = resolveBaseUrl(config.baseUrl, pkgJson);
-const namespace = '@integr8-wm';
+const uiBaseUrl = config.ui.baseUrl.replace(/\/$/, '');
+// The ui site keeps its item pages next to its registry folder: …/integr8-ui/components/<name>/.
+const uiDocsUrl = `${uiBaseUrl.replace(/\/r$/, '/')}components/`;
+const repositoryUrl = `https://github.com/${process.env.GITHUB_REPOSITORY ?? 'MinaLouisLeon/window-manager'}`;
 
 /**
  * Which Ladle stories show which item: a part of the story id (Ladle ids look like
@@ -48,67 +57,6 @@ export const STORIES = {
   'window-manager-shell': ['shell--'],
 };
 
-/** Escapes text for HTML. */
-function escapeHtml(text) {
-  return String(text)
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;');
-}
-
-/** The item name in a registry dependency URL (`…/r/window.json` → `window`). */
-function itemNameFromUrl(url) {
-  return String(url)
-    .replace(/[?#].*$/, '')
-    .replace(/^.*\//, '')
-    .replace(/\.json$/, '');
-}
-
-/** Items grouped by their first category, in a fixed order. */
-function groupByCategory(items) {
-  const order = ['core', 'hooks', 'window', 'shell', 'notification-area'];
-  const groups = new Map();
-  for (const item of items) {
-    const category = item.categories?.[0] ?? 'other';
-    groups.set(category, [...(groups.get(category) ?? []), item]);
-  }
-  return [...groups.entries()].sort(
-    ([a], [b]) => (order.indexOf(a) + 1 || 99) - (order.indexOf(b) + 1 || 99),
-  );
-}
-
-const STYLE = `<style>
-:root { color-scheme: light dark; }
-body { font: 16px/1.5 system-ui, sans-serif; max-width: 56rem; margin: 0 auto; padding: 1rem; }
-pre { overflow-x: auto; padding: 0.75rem; border-radius: 0.5rem; background: color-mix(in oklab, currentColor 8%, transparent); font-size: 0.85rem; }
-iframe { width: 100%; height: 28rem; border: 1px solid color-mix(in oklab, currentColor 25%, transparent); border-radius: 0.5rem; }
-nav a { margin-right: 1rem; }
-details { margin: 0.5rem 0; }
-summary { cursor: pointer; font-family: ui-monospace, monospace; }
-</style>`;
-
-function page(title, body, depth) {
-  return `<!doctype html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${escapeHtml(title)}</title>
-${STYLE}
-</head>
-<body>
-<nav><a href="${'../'.repeat(depth)}./">Registry</a>${
-    existsSync(join(playgroundDir, 'index.html'))
-      ? `<a href="${'../'.repeat(depth)}playground/">Playground</a>`
-      : ''
-  }</nav>
-${body}
-</body>
-</html>
-`;
-}
-
 // Full items (with file contents); registry.json leaves them out.
 const items = await Promise.all(
   index.items.map(async ({ name }) =>
@@ -119,6 +67,13 @@ const items = await Promise.all(
 await rm(siteDir, { recursive: true, force: true });
 await mkdir(siteDir, { recursive: true });
 await cp(registryDir, join(siteDir, 'r'), { recursive: true });
+
+const hasFonts = existsSync(join(uiDistDir, 'fonts.css')) && existsSync(join(uiDistDir, 'fonts'));
+if (hasFonts) {
+  await mkdir(join(siteDir, 'assets'), { recursive: true });
+  await cp(join(uiDistDir, 'fonts.css'), join(siteDir, 'assets', 'fonts.css'));
+  await cp(join(uiDistDir, 'fonts'), join(siteDir, 'assets', 'fonts'), { recursive: true });
+}
 
 const hasPlayground = existsSync(join(playgroundDir, 'index.html'));
 let ladleStories = {};
@@ -137,111 +92,73 @@ function storiesOf(name) {
     .map(([id, story]) => ({ id, name: story.name ?? id }));
 }
 
+// The first story of each item, for the landing page's "Preview" buttons.
+const previewStories = {};
+for (const { name } of index.items) {
+  const first = storiesOf(name)[0];
+  if (first) previewStories[name] = first.id;
+}
+
+// Who documents which export (for links between pages), and who uses which item.
+const exportOwners = new Map();
 const usedBy = new Map();
 for (const item of items) {
+  for (const doc of itemDocs(item)) {
+    if (!exportOwners.has(doc.name)) exportOwners.set(doc.name, item.name);
+  }
   for (const url of item.registryDependencies ?? []) {
     const dependency = itemNameFromUrl(url);
     usedBy.set(dependency, [...(usedBy.get(dependency) ?? []), item.name]);
   }
 }
 
-const itemLink = (name, depth) => `${'../'.repeat(depth)}components/${name}/`;
-
-function renderItemPage(item) {
-  const stories = storiesOf(item.name);
-  const dependencies = (item.registryDependencies ?? []).map(itemNameFromUrl);
-  const list = (names, depth = 2) =>
-    names.length === 0
-      ? '<p>None.</p>'
-      : `<ul>${names
-          .map((name) => {
-            const known = items.some((entry) => entry.name === name);
-            return `<li>${known ? `<a href="${itemLink(name, depth)}"><code>${escapeHtml(name)}</code></a>` : `<code>${escapeHtml(name)}</code> (ui registry)`}</li>`;
-          })
-          .join('')}</ul>`;
-  const body = `<h1>${escapeHtml(item.title ?? item.name)}</h1>
-<p>${escapeHtml(item.description ?? '')}</p>
-<h2>Install</h2>
-<pre>npx shadcn@latest add ${namespace}/${escapeHtml(item.name)}</pre>
-${item.docs ? `<p>${escapeHtml(item.docs)}</p>` : ''}
-<p><a href="../../r/${escapeHtml(item.name)}.json">Registry JSON</a>${
-    item.categories?.length ? ` · category: ${escapeHtml(item.categories.join(', '))}` : ''
-  }</p>
-${
-  stories.length === 0 || !hasPlayground
-    ? ''
-    : `<h2>Live</h2>
-${stories
-  .map(
-    (story) => `<h3>${escapeHtml(story.name)}</h3>
-<iframe loading="lazy" title="${escapeHtml(story.name)}" src="../../playground/?story=${encodeURIComponent(story.id)}&amp;mode=preview&amp;integr8Embed=1"></iframe>`,
-  )
-  .join('\n')}`
-}
-<h2>Needs</h2>
-<h3>Registry items</h3>
-${list(dependencies)}
-<h3>npm packages</h3>
-${
-  (item.dependencies ?? []).length === 0
-    ? '<p>None.</p>'
-    : `<ul>${item.dependencies.map((name) => `<li><code>${escapeHtml(name)}</code></li>`).join('')}</ul>`
-}
-<h3>Used by</h3>
-${list([...new Set(usedBy.get(item.name) ?? [])].sort())}
-<h2>Files</h2>
-${(item.files ?? [])
-  .map(
-    (file) => `<details>
-<summary>${escapeHtml(file.target ?? file.path)}</summary>
-<pre><code>${escapeHtml(file.content ?? '')}</code></pre>
-</details>`,
-  )
-  .join('\n')}`;
-  return page(`${item.title ?? item.name} · ${pkgJson.name}`, body, 2);
-}
+const groups = groupItems(index.items);
+const site = {
+  baseUrl,
+  uiBaseUrl,
+  uiDocsUrl,
+  version: pkgJson.version,
+  registryName: pkgJson.name,
+  groups,
+  order: groups.flatMap((group) => group.items),
+  exportOwners,
+  docsPath,
+  repositoryUrl,
+  ...(hasPlayground ? { playgroundPath: 'playground/' } : {}),
+  ...(hasFonts ? { fontsHref: 'assets/fonts.css' } : {}),
+};
 
 for (const item of items) {
-  const dir = join(siteDir, 'components', item.name);
-  await mkdir(dir, { recursive: true });
-  await writeFile(join(dir, 'index.html'), renderItemPage(item));
+  const folder = join(siteDir, docsPath, item.name);
+  await mkdir(folder, { recursive: true });
+  await writeFile(
+    join(folder, 'index.html'),
+    renderItemPage(
+      { item, stories: storiesOf(item.name), usedBy: [...(usedBy.get(item.name) ?? [])].sort() },
+      site,
+    ),
+  );
 }
 
-const groups = groupByCategory(index.items);
-const sections = groups
-  .map(
-    ([category, entries]) => `<section>
-<h2>${escapeHtml(category)}</h2>
-<ul>
-${entries
-  .map(
-    (item) =>
-      `<li><a href="components/${escapeHtml(item.name)}/"><code>${escapeHtml(item.name)}</code></a> – ${escapeHtml(item.description ?? item.title ?? '')}</li>`,
-  )
-  .join('\n')}
-</ul>
-</section>`,
-  )
-  .join('\n');
-
-const landing = `<h1>${escapeHtml(pkgJson.name)}</h1>
-<p>${escapeHtml(pkgJson.description)}</p>
-<h2>Setup</h2>
-<p>Add the namespaces once to <code>components.json</code>:</p>
-<pre>{ "registries": {
-  "@integr8": "https://minalouisleon.github.io/integr8-ui/r/{name}.json",
-  "${namespace}": "${escapeHtml(baseUrl)}/{name}.json"
-} }</pre>
-<pre>npx shadcn@latest add @integr8/theme
-npx shadcn@latest add ${namespace}/window-manager-shell</pre>
-<h2>Items</h2>
-${index.items.length === 0 ? '<p>No items yet.</p>' : sections}
-<p><small>Version ${escapeHtml(pkgJson.version)} · registry at <code>${escapeHtml(baseUrl)}</code></small></p>`;
-
-await writeFile(join(siteDir, 'index.html'), page(`${pkgJson.name} registry`, landing, 0));
+await writeFile(
+  join(siteDir, 'index.html'),
+  renderRegistryPage(index, {
+    baseUrl,
+    uiBaseUrl,
+    version: pkgJson.version,
+    docsPath,
+    repositoryUrl,
+    previewStories,
+    ...(previewStories['window-manager-shell']
+      ? { defaultStory: previewStories['window-manager-shell'] }
+      : {}),
+    ...(hasPlayground ? { playgroundPath: 'playground/' } : {}),
+    ...(hasFonts ? { fontsHref: 'assets/fonts.css' } : {}),
+  }),
+);
 // Serve files as they are (no Jekyll processing on GitHub Pages).
 await writeFile(join(siteDir, '.nojekyll'), '');
 
 console.log(
-  `site/ (index.html + ${items.length} item pages + r/${hasPlayground ? ' + playground/' : ''}) for ${baseUrl}`,
+  `site/ (index.html + ${items.length} item pages + r/${hasFonts ? ', fonts' : ''}${hasPlayground ? ', playground' : ''}) for ${baseUrl}`,
 );

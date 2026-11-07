@@ -1,21 +1,30 @@
 import {
   Badge,
   Button,
-  ContextMenu,
-  ContextMenuContent,
-  ContextMenuItem,
-  ContextMenuTrigger,
   cn,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
   HoverCard,
   HoverCardContent,
   HoverCardTrigger,
   Separator,
 } from '@integr8-media/ui';
 import { LayoutGrid, X } from 'lucide-react';
-import type { CSSProperties, ReactElement, ReactNode, Ref } from 'react';
+import {
+  type CSSProperties,
+  type ReactElement,
+  type ReactNode,
+  type Ref,
+  useRef,
+  useState,
+} from 'react';
 import type { TaskbarPosition } from '../core/types';
 import { AppIcon } from '../react/AppIcon';
 import { mergeRefs } from '../react/propHelpers';
+import { POPUP_LAYER, useTaskbarClearance } from '../react/taskbarClearance';
+import { useAnchoredContextMenu } from '../react/useAnchoredContextMenu';
 import { type TaskbarItem, useTaskbar } from '../react/useTaskbar';
 import { DesktopSwitcher } from './DesktopSwitcher';
 
@@ -37,6 +46,12 @@ const SIDE: Record<TaskbarPosition, 'top' | 'bottom' | 'left' | 'right'> = {
   right: 'left',
 };
 
+/**
+ * Distance from a taskbar button to the menu opened from it, in px: the taskbar's padding and
+ * border, plus a small gap, so the menu sits just outside the taskbar.
+ */
+const MENU_OFFSET = 10;
+
 function TaskbarButton({
   item,
   position,
@@ -48,65 +63,86 @@ function TaskbarButton({
 }): ReactElement {
   const badge = item.windows.find((win) => win.badge !== null)?.badge ?? null;
   const dirty = item.windows.some((win) => win.dirty);
+  const menu = useAnchoredContextMenu();
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const button = useRef<HTMLElement | null>(null);
+  const clearance = useTaskbarClearance(menu.open || previewOpen);
   return (
-    <ContextMenu>
-      <HoverCard openDelay={300} closeDelay={100}>
-        <ContextMenuTrigger asChild>
-          <HoverCardTrigger asChild>
-            <Button
-              {...tb.getItemProps(item.appId)}
-              variant="ghost"
-              size="icon"
-              data-wm-taskbar-item={item.appId}
-              data-running={item.running ? '' : undefined}
-              data-minimized={item.minimized ? '' : undefined}
-              data-active={item.focused ? '' : undefined}
-              className={cn(
-                'relative size-9 shrink-0',
-                'data-[active]:bg-accent data-[active]:text-accent-foreground',
-                '[&_svg]:size-5',
-              )}
-            >
-              <AppIcon
-                icon={item.icon}
-                className="size-5"
-                fallback={<span className="text-sm font-medium">{item.title.charAt(0)}</span>}
+    <DropdownMenu open={menu.open} onOpenChange={menu.setOpen}>
+      <HoverCard
+        openDelay={300}
+        closeDelay={100}
+        open={previewOpen && !menu.open}
+        onOpenChange={setPreviewOpen}
+      >
+        <HoverCardTrigger asChild>
+          <Button
+            {...tb.getItemProps(item.appId, {
+              ...menu.triggerProps,
+              ref: (node) => {
+                button.current = node;
+              },
+            })}
+            variant="ghost"
+            size="icon"
+            data-wm-taskbar-item={item.appId}
+            data-running={item.running ? '' : undefined}
+            data-minimized={item.minimized ? '' : undefined}
+            data-active={item.focused ? '' : undefined}
+            className={cn(
+              'relative size-9 shrink-0',
+              'data-[active]:bg-accent data-[active]:text-accent-foreground',
+              '[&_svg]:size-5',
+            )}
+          >
+            {/* The menu is placed next to the button (not at the pointer), outside the taskbar. */}
+            <DropdownMenuTrigger asChild>
+              <span aria-hidden="true" className="pointer-events-none absolute inset-0" />
+            </DropdownMenuTrigger>
+            <AppIcon
+              icon={item.icon}
+              className="size-5"
+              fallback={<span className="text-sm font-medium">{item.title.charAt(0)}</span>}
+            />
+            {item.running ? (
+              <span
+                aria-hidden="true"
+                data-wm-running-indicator=""
+                className={cn(
+                  'absolute rounded-full bg-primary transition-[width] motion-reduce:transition-none',
+                  position === 'bottom' && 'bottom-0.5 left-1/2 h-0.5 -translate-x-1/2',
+                  position === 'top' && 'top-0.5 left-1/2 h-0.5 -translate-x-1/2',
+                  position === 'left' && 'top-1/2 left-0.5 w-0.5 -translate-y-1/2',
+                  position === 'right' && 'top-1/2 right-0.5 w-0.5 -translate-y-1/2',
+                  item.focused
+                    ? position === 'left' || position === 'right'
+                      ? 'h-4'
+                      : 'w-4'
+                    : position === 'left' || position === 'right'
+                      ? 'h-1'
+                      : 'w-1',
+                )}
               />
-              {item.running ? (
-                <span
-                  aria-hidden="true"
-                  data-wm-running-indicator=""
-                  className={cn(
-                    'absolute rounded-full bg-primary transition-[width] motion-reduce:transition-none',
-                    position === 'bottom' && 'bottom-0.5 left-1/2 h-0.5 -translate-x-1/2',
-                    position === 'top' && 'top-0.5 left-1/2 h-0.5 -translate-x-1/2',
-                    position === 'left' && 'top-1/2 left-0.5 w-0.5 -translate-y-1/2',
-                    position === 'right' && 'top-1/2 right-0.5 w-0.5 -translate-y-1/2',
-                    item.focused
-                      ? position === 'left' || position === 'right'
-                        ? 'h-4'
-                        : 'w-4'
-                      : position === 'left' || position === 'right'
-                        ? 'h-1'
-                        : 'w-1',
-                  )}
-                />
-              ) : null}
-              {badge === null ? null : (
-                <Badge className="absolute -top-1 -right-1 h-4 min-w-4 px-1 text-[10px]">
-                  {badge}
-                </Badge>
-              )}
-              {dirty && badge === null ? (
-                <span
-                  aria-hidden="true"
-                  className="absolute top-1 right-1 size-1.5 rounded-full bg-primary"
-                />
-              ) : null}
-            </Button>
-          </HoverCardTrigger>
-        </ContextMenuTrigger>
-        <HoverCardContent side={SIDE[position]} className="w-60 p-1" data-wm-taskbar-preview="">
+            ) : null}
+            {badge === null ? null : (
+              <Badge className="absolute -top-1 -right-1 h-4 min-w-4 px-1 text-[10px]">
+                {badge}
+              </Badge>
+            )}
+            {dirty && badge === null ? (
+              <span
+                aria-hidden="true"
+                className="absolute top-1 right-1 size-1.5 rounded-full bg-primary"
+              />
+            ) : null}
+          </Button>
+        </HoverCardTrigger>
+        <HoverCardContent
+          side={SIDE[position]}
+          collisionPadding={clearance}
+          className={cn('w-60 p-1', POPUP_LAYER)}
+          data-wm-taskbar-preview=""
+        >
           <p className="truncate px-2 py-1 text-xs font-medium text-muted-foreground">
             {item.title}
           </p>
@@ -151,25 +187,39 @@ function TaskbarButton({
           )}
         </HoverCardContent>
       </HoverCard>
-      <ContextMenuContent>
-        <ContextMenuItem onSelect={() => tb.activate(item.appId)}>
+      <DropdownMenuContent
+        side={SIDE[position]}
+        align="center"
+        sideOffset={MENU_OFFSET}
+        collisionPadding={clearance}
+        className={POPUP_LAYER}
+        data-wm-taskbar-menu=""
+        onCloseAutoFocus={(event) => {
+          // The menu's trigger is an invisible overlay: give focus back to the button itself.
+          event.preventDefault();
+          button.current?.focus();
+        }}
+      >
+        <DropdownMenuItem onSelect={() => tb.activate(item.appId)}>
           {item.running ? 'Show' : 'Open'}
-        </ContextMenuItem>
-        <ContextMenuItem onSelect={() => (item.pinned ? tb.unpin(item.appId) : tb.pin(item.appId))}>
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          onSelect={() => (item.pinned ? tb.unpin(item.appId) : tb.pin(item.appId))}
+        >
           {item.pinned ? 'Unpin from taskbar' : 'Pin to taskbar'}
-        </ContextMenuItem>
+        </DropdownMenuItem>
         {item.running ? (
-          <ContextMenuItem
+          <DropdownMenuItem
             variant="destructive"
             onSelect={() => {
               for (const win of item.windows) tb.closeWindow(win.id);
             }}
           >
             {item.windows.length > 1 ? 'Close all windows' : 'Close window'}
-          </ContextMenuItem>
+          </DropdownMenuItem>
         ) : null}
-      </ContextMenuContent>
-    </ContextMenu>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 

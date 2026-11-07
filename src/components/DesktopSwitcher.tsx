@@ -10,6 +10,7 @@ import {
 import { Check, Layers, Pencil, Plus, X } from 'lucide-react';
 import { type CSSProperties, type ReactElement, type Ref, useState } from 'react';
 import type { DesktopId, TaskbarPosition } from '../core/types';
+import { POPUP_LAYER, useTaskbarClearance } from '../react/taskbarClearance';
 import { useDesktopSwitcher } from '../react/useDesktopSwitcher';
 import { useWindowManager } from '../react/useWindowManager';
 
@@ -36,6 +37,7 @@ export function DesktopSwitcher({ className, style, ref }: DesktopSwitcherProps)
   const switcher = useDesktopSwitcher();
   const { state: position } = useWindowManager((state) => state.shell.taskbarPosition);
   const [open, setOpen] = useState(false);
+  const clearance = useTaskbarClearance(open);
   const [removing, setRemoving] = useState<DesktopId | null>(null);
   const activeNumber = switcher.desktops.findIndex((desktop) => desktop.active) + 1;
 
@@ -69,7 +71,12 @@ export function DesktopSwitcher({ className, style, ref }: DesktopSwitcherProps)
           </span>
         </Button>
       </PopoverTrigger>
-      <PopoverContent side={SIDE[position]} align="end" className="w-72 p-2">
+      <PopoverContent
+        side={SIDE[position]}
+        align="end"
+        collisionPadding={clearance}
+        className={cn('w-72 p-2', POPUP_LAYER)}
+      >
         <ul className="flex flex-col gap-1" aria-label="Desktops">
           {switcher.desktops.map((desktop) => {
             const others = switcher.desktops.filter((entry) => entry.id !== desktop.id);
