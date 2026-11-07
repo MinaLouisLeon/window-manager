@@ -4,6 +4,7 @@ import {
   cascade,
   clampBounds,
   dragRestoreBounds,
+  resizeBounds,
   workArea,
   zoneAtPoint,
 } from './geometry';
@@ -266,5 +267,59 @@ describe('dragRestoreBounds', () => {
   it('returns whole pixels', () => {
     const result = dragRestoreBounds({ x: 333, y: 7 }, maximized, { ...normal, width: 401 });
     expect(Number.isInteger(result.x)).toBe(true);
+  });
+});
+
+describe('resizeBounds', () => {
+  const start = { x: 300, y: 200, width: 400, height: 300 };
+  const limits = { min: { width: 200, height: 100 }, max: { width: 600, height: 500 } };
+
+  it('grows from the east and south edges', () => {
+    expect(resizeBounds(start, 'se', 50, 40, limits, area)).toEqual({
+      x: 300,
+      y: 200,
+      width: 450,
+      height: 340,
+    });
+  });
+
+  it('keeps the opposite edges when dragging the west and north edges', () => {
+    expect(resizeBounds(start, 'nw', -50, -30, limits, area)).toEqual({
+      x: 250,
+      y: 170,
+      width: 450,
+      height: 330,
+    });
+  });
+
+  it('changes one axis for a side edge', () => {
+    expect(resizeBounds(start, 'e', 20, 99, limits, area)).toEqual({ ...start, width: 420 });
+    expect(resizeBounds(start, 'n', 99, 20, limits, area)).toEqual({
+      ...start,
+      y: 220,
+      height: 280,
+    });
+  });
+
+  it('stops at the minimum size without moving the opposite edge', () => {
+    const result = resizeBounds(start, 'w', 900, 0, limits, area);
+    expect(result.width).toBe(200);
+    expect(result.x + result.width).toBe(700);
+    const top = resizeBounds(start, 'n', 0, 900, limits, area);
+    expect(top.height).toBe(100);
+    expect(top.y + top.height).toBe(500);
+  });
+
+  it('stops at the maximum size', () => {
+    const result = resizeBounds(start, 'sw', -900, 900, limits, area);
+    expect(result.width).toBe(600);
+    expect(result.height).toBe(500);
+    expect(result.x + result.width).toBe(700);
+  });
+
+  it('keeps the top edge inside the area', () => {
+    const result = resizeBounds(start, 'n', 0, -900, { min: limits.min }, area);
+    expect(result.y).toBe(0);
+    expect(result.y + result.height).toBe(500);
   });
 });

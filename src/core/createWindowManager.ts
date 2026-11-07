@@ -1,6 +1,13 @@
 import { buildDeepLink, parseDeepLink } from './deepLinks';
 import { WindowManagerError } from './errors';
-import { boundsForZone, cascade, clampBounds, workArea } from './geometry';
+import {
+  boundsForZone,
+  cascade,
+  clampBounds,
+  DEFAULT_MIN_SIZE,
+  DEFAULT_MIN_VISIBLE_TITLE_BAR,
+  workArea,
+} from './geometry';
 import { createMessageBus } from './messaging';
 import { parseSnapshot } from './persistence';
 import type {
@@ -26,7 +33,6 @@ import type {
 } from './types';
 
 const DEFAULT_SIZE: Size = { width: 800, height: 600 };
-const DEFAULT_MIN: Size = { width: 240, height: 160 };
 /** Used until the surface reports its size with `setViewport`. */
 const DEFAULT_VIEWPORT: Size = { width: 1024, height: 768 };
 const NO_INSETS: Insets = { top: 0, right: 0, bottom: 0, left: 0 };
@@ -108,7 +114,7 @@ export function createWindowManager(options: WindowManagerOptions): WindowManage
     }
     apps.set(app.id, app);
   }
-  const minVisibleTitleBar = options.minVisibleTitleBar ?? 48;
+  const minVisibleTitleBar = options.minVisibleTitleBar ?? DEFAULT_MIN_VISIBLE_TITLE_BAR;
   const cascadeOffset = options.cascadeOffset ?? 24;
 
   const desktops: Desktop[] = (
@@ -211,7 +217,7 @@ export function createWindowManager(options: WindowManagerOptions): WindowManage
   } {
     const max = app.size?.max;
     return {
-      min: app.size?.min ?? DEFAULT_MIN,
+      min: app.size?.min ?? DEFAULT_MIN_SIZE,
       ...(max ? { max } : {}),
       minVisibleTitleBar,
     };
