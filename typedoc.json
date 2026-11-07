@@ -1,0 +1,9 @@
+{
+  "$schema": "https://typedoc.org/schema.json",
+  "name": "@integr8-media/window-manager",
+  "entryPoints": ["src/index.ts", "src/core/index.ts"],
+  "out": "docs/api",
+  "readme": "README.md",
+  "excludePrivate": true,
+  "excludeInternal": true
+}

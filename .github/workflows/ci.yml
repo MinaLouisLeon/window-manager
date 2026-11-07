@@ -1,0 +1,16 @@
+# Pull request checks, using the shared workflow from integr8-config.
+# integr8-config has no v1 tag yet, so this points at main. Switch to @v1 once that tag exists.
+name: CI
+
+on:
+  pull_request:
+    branches: [dev]
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    uses: MinaLouisLeon/integr8-config/.github/workflows/pr-checks.yml@main
+    with:
+      os-matrix: false

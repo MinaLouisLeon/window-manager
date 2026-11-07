@@ -1,0 +1,96 @@
+{
+  "name": "@integr8-media/window-manager",
+  "version": "1.0.0",
+  "description": "A full mini desktop for any React app: floating windows, snapping, multiple desktops, desktop icons, a taskbar, a start menu, switchers, menus, messaging, deep links and saved layouts. Built on @integr8-media/ui.",
+  "license": "MIT",
+  "author": "Mina Louis Leon",
+  "type": "module",
+  "sideEffects": [
+    "**/*.css"
+  ],
+  "engines": {
+    "node": ">=24"
+  },
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.mts",
+      "default": "./dist/index.mjs"
+    },
+    "./core": {
+      "types": "./dist/core/index.d.mts",
+      "default": "./dist/core/index.mjs"
+    },
+    "./theme.css": "./dist/theme.css",
+    "./styles.css": "./dist/styles.css",
+    "./registry/*": "./dist/registry/*",
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "lint": "biome check",
+    "format": "biome format --write",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "build": "tsdown && node scripts/buildAssets.mjs && npm run build:css && npm run build:registry",
+    "build:css": "tailwindcss --input src/styles/styles.entry.css --output dist/styles.css --minify",
+    "build:registry": "node scripts/buildRegistry.mjs",
+    "build:registry-site": "node scripts/buildRegistry.mjs && node scripts/buildRegistrySite.mjs",
+    "site:build": "ladle build --config playground --outDir playground/dist && npm run build:registry-site",
+    "size": "size-limit",
+    "fixtures": "node scripts/fixtures.mjs",
+    "playground": "ladle serve --config playground",
+    "playground:build": "ladle build --config playground --outDir playground/dist",
+    "playground:smoke": "npm run playground:build && playwright test",
+    "check:exports": "publint && attw --pack --profile esm-only --exclude-entrypoints ./theme.css ./styles.css",
+    "docs": "typedoc",
+    "prepare": "lefthook install"
+  },
+  "peerDependencies": {
+    "@integr8-media/ui": "^1.2.1",
+    "lucide-react": "^1.47.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "tailwindcss": "^4.0.0"
+  },
+  "peerDependenciesMeta": {
+    "tailwindcss": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@arethetypeswrong/cli": "^0.18.5",
+    "@biomejs/biome": "^2.6.5",
+    "@integr8-media/config": "^1.1.0",
+    "@integr8-media/ui": "^1.2.1",
+    "@ladle/react": "^5.0.3",
+    "@playwright/test": "^1.56.1",
+    "@size-limit/esbuild": "^11.2.0",
+    "@size-limit/file": "^11.2.0",
+    "@tailwindcss/cli": "^4.3.4",
+    "@tailwindcss/vite": "^4.3.4",
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
+    "@types/react": "^19.2.2",
+    "@types/react-dom": "^19.2.2",
+    "@vitest/coverage-v8": "^5.1.0",
+    "jsdom": "^27.0.1",
+    "lefthook": "^2.2.2",
+    "lucide-react": "^1.47.0",
+    "publint": "^0.3.25",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "size-limit": "^11.2.0",
+    "tailwindcss": "^4.3.4",
+    "tsdown": "^0.23.5",
+    "typedoc": "^0.28.20",
+    "typescript": "~6.0.0",
+    "vitest": "^5.1.0"
+  }
+}

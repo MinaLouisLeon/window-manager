@@ -1,0 +1,16 @@
+/*
+ * @integr8-media/window-manager — Tailwind v4 preset.
+ *
+ * Use it after Tailwind and the ui preset:
+ *   @import "tailwindcss";
+ *   @import "@integr8-media/ui/theme.css";
+ *   @import "@integr8-media/window-manager/theme.css";
+ *
+ * It lets Tailwind see the classes used by the package's built files and adds the --wm-* size
+ * variables. The color tokens come from @integr8-media/ui/theme.css.
+ */
+
+@import "./wm.css";
+
+/* Let Tailwind see the classes used by the package's built files (dist/). */
+@source "./**/*.mjs";

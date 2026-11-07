@@ -1,0 +1,25 @@
+/*
+ * Playground styles: Tailwind + the ui preset + this package's preset, scanning the component
+ * source and stories. Mirrors what a Tailwind v4 app does with the two theme.css files.
+ */
+@import "tailwindcss";
+@import "@integr8-media/ui/theme.css";
+@import "../src/styles/theme.css";
+
+@source "../src";
+@source not "../src/**/*.test.{ts,tsx}";
+@source "./";
+
+/*
+ * Ladle's own frame and sidebar only know its light and dark themes. Paint them with our
+ * tokens so they follow every theme, Integr8 included. `html[data-theme]` outranks Ladle's
+ * `[data-theme="dark"]` rule.
+ */
+html[data-theme] {
+  --ladle-bg-color-primary: var(--background);
+  --ladle-bg-color-secondary: var(--card);
+  --ladle-color-primary: var(--foreground);
+  --ladle-color-secondary: var(--muted-foreground);
+  --ladle-color-hover: var(--muted-foreground);
+  --ladle-color-accent: var(--ring);
+}
