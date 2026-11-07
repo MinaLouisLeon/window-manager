@@ -6,8 +6,7 @@
 export default {
   // Where this registry's JSON files are served (GitHub Pages by default). Set
   // REGISTRY_BASE_URL to move it.
-  baseUrl:
-    process.env.REGISTRY_BASE_URL ?? 'https://minalouisleon.github.io/integr8-window-manager/r',
+  baseUrl: process.env.REGISTRY_BASE_URL ?? 'https://minalouisleon.github.io/window-manager/r',
   // The ui registry that `@integr8-media/ui` imports resolve to. Set UI_REGISTRY_BASE_URL to
   // point at another host.
   ui: {
