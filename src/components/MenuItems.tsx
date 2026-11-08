@@ -8,6 +8,7 @@ import {
   ContextMenuSub,
   ContextMenuSubContent,
   ContextMenuSubTrigger,
+  cn,
   DropdownMenuCheckboxItem,
   DropdownMenuItem,
   DropdownMenuRadioGroup,
@@ -83,6 +84,28 @@ const DROPDOWN = {
   SubContent: DropdownMenuSubContent,
 } as unknown as Parts;
 
+/**
+ * What an unchecked checkbox or radio entry shows in the left gutter, where ui draws the check
+ * mark or dot once it is on: a hollow box or ring, so the gutter is never empty and the entry's
+ * state is visible in both cases.
+ */
+function Unchecked({ kind }: { kind: 'checkbox' | 'radio' }): ReactElement {
+  return (
+    <span
+      aria-hidden="true"
+      data-wm-unchecked=""
+      className="pointer-events-none absolute left-2 flex size-3.5 items-center justify-center"
+    >
+      <span
+        className={cn(
+          'border border-muted-foreground/50',
+          kind === 'radio' ? 'size-3 rounded-full' : 'size-3.5 rounded-xs',
+        )}
+      />
+    </span>
+  );
+}
+
 function renderItems(items: MenuItemModel[], parts: Parts): ReactNode[] {
   const nodes: ReactNode[] = [];
   for (let index = 0; index < items.length; index += 1) {
@@ -115,6 +138,7 @@ function renderItems(items: MenuItemModel[], parts: Parts): ReactNode[] {
               disabled={entry.disabled === true}
               onSelect={entry.onSelect}
             >
+              {entry.checked === true ? null : <Unchecked kind="radio" />}
               {entry.label}
               <Hint shortcut={entry.shortcut} parts={parts} />
             </parts.RadioItem>
@@ -129,6 +153,7 @@ function renderItems(items: MenuItemModel[], parts: Parts): ReactNode[] {
           disabled={item.disabled === true}
           onSelect={item.onSelect}
         >
+          {item.checked === true ? null : <Unchecked kind="checkbox" />}
           {item.label}
           <Hint shortcut={item.shortcut} parts={parts} />
         </parts.CheckboxItem>,

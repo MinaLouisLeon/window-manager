@@ -13,9 +13,8 @@ import {
   boundsForZone,
   clampBounds,
   DEFAULT_MIN_SIZE,
-  DEFAULT_MIN_VISIBLE_TITLE_BAR,
-  DEFAULT_SNAP_THRESHOLD,
   dragRestoreBounds,
+  magnetize,
   type ResizeEdge,
   resizeBounds,
   workArea,
@@ -103,6 +102,8 @@ interface Session {
   surfaceTop: number;
   /** The snap zone under the pointer (drags only). */
   zone: SnapZone | 'maximize' | null;
+  /** Bounds of the other visible windows of the desktop, whose edges the dragged one sticks to. */
+  others: Bounds[];
 }
 
 interface KeyboardSession {
@@ -242,10 +243,7 @@ export function useWindowFrame(id: WindowId): UseWindowFrameResult {
             ? clampBounds(
                 { ...active.latest, x: active.latest.x + dx, y: active.latest.y + dy },
                 area,
-                {
-                  ...rules,
-                  minVisibleTitleBar: DEFAULT_MIN_VISIBLE_TITLE_BAR,
-                },
+                { ...rules, minVisibleTitleBar: manager.getConfig().minVisibleTitleBar },
               )
             : resizeBounds(active.latest, 'se', dx, dy, rules, area);
         paint(rootElement.current, active.latest);
@@ -297,6 +295,14 @@ export function useWindowFrame(id: WindowId): UseWindowFrameResult {
       surfaceLeft: (rect?.left ?? 0) - current.bounds.x,
       surfaceTop: (rect?.top ?? 0) - current.bounds.y,
       zone: null,
+      others: Object.values(state.windows)
+        .filter(
+          (other) =>
+            other.id !== id &&
+            other.desktopId === state.activeDesktopId &&
+            other.status === 'normal',
+        )
+        .map((other) => other.bounds),
     };
   }
 
@@ -309,7 +315,7 @@ export function useWindowFrame(id: WindowId): UseWindowFrameResult {
       zone = zoneAtPoint(
         { x: event.clientX - active.surfaceLeft, y: event.clientY - active.surfaceTop },
         area,
-        DEFAULT_SNAP_THRESHOLD,
+        manager.getConfig().snapThreshold,
       );
     }
     if (zone === active.zone) return;
@@ -366,14 +372,21 @@ export function useWindowFrame(id: WindowId): UseWindowFrameResult {
     }
     const current = manager.getState().windows[id];
     if (current === undefined) return;
-    active.latest = clampBounds(
-      {
-        ...active.base,
-        x: active.base.x + event.clientX - active.originX,
-        y: active.base.y + event.clientY - active.originY,
-      },
-      currentArea(manager),
-      { ...sizeRules(manager, current), minVisibleTitleBar: DEFAULT_MIN_VISIBLE_TITLE_BAR },
+    const area = currentArea(manager);
+    const config = manager.getConfig();
+    active.latest = magnetize(
+      clampBounds(
+        {
+          ...active.base,
+          x: active.base.x + event.clientX - active.originX,
+          y: active.base.y + event.clientY - active.originY,
+        },
+        area,
+        { ...sizeRules(manager, current), minVisibleTitleBar: config.minVisibleTitleBar },
+      ),
+      area,
+      active.others,
+      config.edgeMagnet === false ? 0 : config.edgeMagnet,
     );
     paint(rootElement.current, active.latest);
     updateSnapZone(active, event);
@@ -435,6 +448,7 @@ export function useWindowFrame(id: WindowId): UseWindowFrameResult {
       surfaceLeft: 0,
       surfaceTop: 0,
       zone: null,
+      others: [],
     };
   }
 

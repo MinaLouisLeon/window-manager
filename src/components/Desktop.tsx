@@ -1,11 +1,12 @@
 import { ContextMenu, ContextMenuTrigger, cn } from '@integr8-media/ui';
 import { type CSSProperties, type ReactElement, type ReactNode, type Ref, useMemo } from 'react';
-import type { Wallpaper } from '../core/types';
 import { mergeRefs } from '../react/propHelpers';
 import { useDesktopSurface } from '../react/useDesktopSurface';
+import { wallpaperStyle } from '../react/wallpaperStyle';
 import { DesktopIcons } from './DesktopIcons';
 import { DesktopMenu } from './DesktopMenu';
 import { SnapPreview } from './SnapPreview';
+import { WallpaperPicker, type WallpaperPickerProps } from './WallpaperPicker';
 import { Window, type WindowProps } from './Window';
 
 /** Props of `Desktop`. */
@@ -16,33 +17,17 @@ export interface DesktopProps {
   taskbarSize?: number;
   /** Props for every window (for example `titleBarSlots`). */
   windowProps?: Omit<WindowProps, 'windowId'>;
+  /**
+   * Turns a file chosen in the wallpaper picker (opened from the desktop menu) into an image URL.
+   * The app stores the upload and returns where it can be loaded from. Without it the picker has
+   * no upload button.
+   */
+  onWallpaperUpload?: WallpaperPickerProps['onUpload'];
   /** Extra content above the windows (overlays, a taskbar). */
   children?: ReactNode;
   className?: string;
   style?: CSSProperties;
   ref?: Ref<HTMLDivElement>;
-}
-
-/** The CSS for a wallpaper. `theme` (or none) paints the theme's background tokens. */
-export function wallpaperStyle(wallpaper: Wallpaper | null): CSSProperties {
-  switch (wallpaper?.type) {
-    case 'color':
-      return { background: wallpaper.value };
-    case 'gradient':
-      return { background: wallpaper.value };
-    case 'image': {
-      const fit = wallpaper.fit ?? 'cover';
-      return {
-        backgroundImage: `url("${wallpaper.url.replace(/"/g, '%22')}")`,
-        backgroundSize: fit === 'center' ? 'auto' : fit,
-        backgroundPosition: 'center',
-        backgroundRepeat: 'no-repeat',
-        backgroundColor: 'var(--background)',
-      };
-    }
-    default:
-      return { background: 'linear-gradient(135deg, var(--background), var(--muted))' };
-  }
 }
 
 /**
@@ -54,6 +39,7 @@ export function Desktop({
   icons = true,
   taskbarSize,
   windowProps,
+  onWallpaperUpload,
   children,
   className,
   style,
@@ -86,6 +72,7 @@ export function Desktop({
         <Window key={win.id} {...windowProps} windowId={win.id} />
       ))}
       <SnapPreview />
+      <WallpaperPicker dialog {...(onWallpaperUpload ? { onUpload: onWallpaperUpload } : {})} />
       {children}
     </div>
   );

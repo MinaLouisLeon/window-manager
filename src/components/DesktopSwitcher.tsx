@@ -7,12 +7,13 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@integr8-media/ui';
-import { Check, Layers, Pencil, Plus, X } from 'lucide-react';
+import { Check, Layers, LayoutDashboard, Pencil, Plus, X } from 'lucide-react';
 import { type CSSProperties, type ReactElement, type Ref, useState } from 'react';
 import type { DesktopId, TaskbarPosition } from '../core/types';
 import { POPUP_LAYER, useTaskbarClearance } from '../react/taskbarClearance';
 import { useDesktopSwitcher } from '../react/useDesktopSwitcher';
 import { useWindowManager } from '../react/useWindowManager';
+import { useWindowManagerContext } from '../react/windowManagerContext';
 
 /** Props of `DesktopSwitcher`. */
 export interface DesktopSwitcherProps {
@@ -35,6 +36,7 @@ const SIDE: Record<TaskbarPosition, 'top' | 'bottom' | 'left' | 'right'> = {
  */
 export function DesktopSwitcher({ className, style, ref }: DesktopSwitcherProps): ReactElement {
   const switcher = useDesktopSwitcher();
+  const { stores } = useWindowManagerContext();
   const { state: position } = useWindowManager((state) => state.shell.taskbarPosition);
   const [open, setOpen] = useState(false);
   const clearance = useTaskbarClearance(open);
@@ -200,6 +202,18 @@ export function DesktopSwitcher({ className, style, ref }: DesktopSwitcherProps)
         >
           <Plus className="size-4" />
           New desktop
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="w-full justify-start gap-2"
+          onClick={() => {
+            setOpen(false);
+            stores.overview.set(true);
+          }}
+        >
+          <LayoutDashboard className="size-4" />
+          Desktop overview
         </Button>
       </PopoverContent>
     </Popover>

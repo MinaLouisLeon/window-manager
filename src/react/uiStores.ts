@@ -32,6 +32,13 @@ export interface CloseRequest {
   resolve(allow: boolean): void;
 }
 
+/**
+ * What an app's "save" does when the close dialog asks. Return `false` (or a promise that
+ * resolves to `false`, or throw) when saving failed and the window must stay open; anything else
+ * counts as saved and the window closes.
+ */
+export type SaveHandler = () => unknown;
+
 /** UI state shared between hooks and components; one set per `WindowManagerProvider`. */
 export interface UiStores {
   snapPreview: ExternalStore<SnapPreviewState>;
@@ -40,6 +47,12 @@ export interface UiStores {
   menus: ExternalStore<MenuRegistry>;
   /** The close question the `CloseGuardDialog` is showing (null: none). */
   closeRequest: ExternalStore<CloseRequest | null>;
+  /** True while the desktop overview is open. */
+  overview: ExternalStore<boolean>;
+  /** True while the wallpaper picker dialog is open. */
+  wallpaperPicker: ExternalStore<boolean>;
+  /** The save handler of each window that has one (read when the close dialog opens). */
+  saveHandlers: Map<WindowId, SaveHandler>;
 }
 
 /** The switcher's closed state. */
@@ -53,5 +66,8 @@ export function createUiStores(): UiStores {
     startMenu: createExternalStore<StartMenuState>({ open: false, search: '' }),
     menus: createExternalStore<MenuRegistry>({ windowItems: [], desktopItems: [] }),
     closeRequest: createExternalStore<CloseRequest | null>(null),
+    overview: createExternalStore(false),
+    wallpaperPicker: createExternalStore(false),
+    saveHandlers: new Map(),
   };
 }

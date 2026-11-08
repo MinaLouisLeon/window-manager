@@ -275,8 +275,10 @@ describe('useDesktopMenu', () => {
     expect(result.current.items.map((item) => item.id)).toEqual([
       'new-desktop',
       'show-desktop',
+      'desktop-overview',
       'separator-icons',
       'arrange-icons',
+      'wallpaper',
       'taskbar',
       'controls-style',
     ]);

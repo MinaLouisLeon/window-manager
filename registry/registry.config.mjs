@@ -60,7 +60,7 @@ export default {
     ],
     'notification-area': [
       'NotificationArea',
-      'TrayItem',
+      'NotificationTrayItem',
       'Clock',
       'NotificationCenter',
       'QuickSettings',

@@ -26,9 +26,10 @@ export interface UseDesktopMenuResult {
 }
 
 /**
- * The model of the desktop's right-click menu: new desktop, show desktop, arrange icons (by
- * name), taskbar settings (position, auto-hide), window controls style, and any entries apps
- * registered with `useRegisterDesktopMenuItems`. Components turn it into ui menu items.
+ * The model of the desktop's right-click menu: new desktop, show desktop, desktop overview,
+ * arrange icons (by name), change wallpaper (opens the wallpaper picker), taskbar settings
+ * (position, auto-hide), window controls style, and any entries apps registered with
+ * `useRegisterDesktopMenuItems`. Components turn it into ui menu items.
  */
 export function useDesktopMenu(): UseDesktopMenuResult {
   const { manager, stores, shortcuts } = useWindowManagerContext();
@@ -53,6 +54,13 @@ export function useDesktopMenu(): UseDesktopMenuResult {
         shortcut: shortcuts.showDesktop,
         onSelect: () => manager.showDesktop(),
       },
+      {
+        type: 'item',
+        id: 'desktop-overview',
+        label: 'Desktop overview',
+        shortcut: shortcuts.desktopOverview,
+        onSelect: () => stores.overview.set(true),
+      },
       { type: 'separator', id: 'separator-icons' },
       {
         type: 'submenu',
@@ -72,6 +80,12 @@ export function useDesktopMenu(): UseDesktopMenuResult {
             },
           },
         ],
+      },
+      {
+        type: 'item',
+        id: 'wallpaper',
+        label: 'Change wallpaper…',
+        onSelect: () => stores.wallpaperPicker.set(true),
       },
       {
         type: 'submenu',
@@ -118,7 +132,7 @@ export function useDesktopMenu(): UseDesktopMenuResult {
     const appItems = registry.desktopItems.flatMap((entry) => entry.items);
     if (appItems.length > 0) list.push({ type: 'separator', id: 'separator-app' }, ...appItems);
     return list;
-  }, [manager, shell, iconOrder, registry, shortcuts]);
+  }, [manager, stores, shell, iconOrder, registry, shortcuts]);
 
   return { items };
 }

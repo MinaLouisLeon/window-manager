@@ -1,7 +1,9 @@
 /**
  * React entry of `@integr8-media/window-manager`: `WindowManagerProvider`, every hook and every
- * component, plus the core types. The public API is added milestone by milestone (M6 to M10).
+ * component, plus the core types.
  */
+export type { ClockProps } from './components/Clock';
+export { Clock } from './components/Clock';
 export type { CloseGuardDialogProps } from './components/CloseGuardDialog';
 export { CloseGuardDialog } from './components/CloseGuardDialog';
 export type { DesktopProps } from './components/Desktop';
@@ -10,14 +12,28 @@ export type { DesktopIconsProps } from './components/DesktopIcons';
 export { DesktopIcons } from './components/DesktopIcons';
 export type { DesktopMenuProps } from './components/DesktopMenu';
 export { DesktopMenu } from './components/DesktopMenu';
+export type { DesktopOverviewProps } from './components/DesktopOverview';
+export { DesktopOverview } from './components/DesktopOverview';
 export type { DesktopSwitcherProps } from './components/DesktopSwitcher';
 export { DesktopSwitcher } from './components/DesktopSwitcher';
+export type { NotificationAreaProps } from './components/NotificationArea';
+export { NotificationArea } from './components/NotificationArea';
+export type { NotificationCenterProps } from './components/NotificationCenter';
+export { NotificationCenter } from './components/NotificationCenter';
+export type { NotificationTrayItemProps } from './components/NotificationTrayItem';
+export { NotificationTrayItem } from './components/NotificationTrayItem';
+export type { QuickSettingsProps } from './components/QuickSettings';
+export { QuickSettings } from './components/QuickSettings';
+export type { SnapLayoutsMenuProps } from './components/SnapLayoutsMenu';
+export { SnapLayoutsMenu } from './components/SnapLayoutsMenu';
 export type { SnapPreviewProps } from './components/SnapPreview';
 export { SnapPreview } from './components/SnapPreview';
 export type { StartMenuProps } from './components/StartMenu';
 export { StartMenu } from './components/StartMenu';
 export type { TaskbarProps } from './components/Taskbar';
 export { Taskbar } from './components/Taskbar';
+export type { WallpaperPickerProps } from './components/WallpaperPicker';
+export { WallpaperPicker } from './components/WallpaperPicker';
 export type { WindowProps } from './components/Window';
 export { Window } from './components/Window';
 export type { WindowControlsProps } from './components/WindowControls';
@@ -39,18 +55,32 @@ export type {
   ShortcutOptions,
 } from './react/shortcutCombos';
 export { DEFAULT_SHORTCUTS } from './react/shortcutCombos';
-export type { SnapPreviewState } from './react/uiStores';
+export type { SaveHandler, SnapPreviewState } from './react/uiStores';
 export type { MessageTarget, UseAppWindowResult } from './react/useAppWindow';
 export { useAppWindow } from './react/useAppWindow';
+export type { UseClockOptions, UseClockResult } from './react/useClock';
+export { useClock } from './react/useClock';
 export type { DesktopIconItem, UseDesktopIconsResult } from './react/useDesktopIcons';
 export { useDesktopIcons } from './react/useDesktopIcons';
 export type { UseDesktopMenuResult } from './react/useDesktopMenu';
 export { useDesktopMenu, useRegisterDesktopMenuItems } from './react/useDesktopMenu';
+export type {
+  OverviewDesktop,
+  OverviewWindow,
+  UseDesktopOverviewResult,
+} from './react/useDesktopOverview';
+export { useDesktopOverview } from './react/useDesktopOverview';
 export type { UseDesktopSurfaceOptions, UseDesktopSurfaceResult } from './react/useDesktopSurface';
 export { useDesktopSurface } from './react/useDesktopSurface';
 export type { DesktopSwitcherEntry, UseDesktopSwitcherResult } from './react/useDesktopSwitcher';
 export { useDesktopSwitcher } from './react/useDesktopSwitcher';
+export type { UseNotificationsResult } from './react/useNotifications';
+export { useNotifications } from './react/useNotifications';
+export type { UseQuickSettingsResult } from './react/useQuickSettings';
+export { useQuickSettings } from './react/useQuickSettings';
 export { useShortcuts } from './react/useShortcuts';
+export type { SnapLayoutEntry, UseSnapLayoutsResult } from './react/useSnapLayouts';
+export { SNAP_LAYOUT_LABELS, useSnapLayouts } from './react/useSnapLayouts';
 export { useSnapPreview } from './react/useSnapPreview';
 export type {
   StartMenuCategory,
@@ -60,6 +90,8 @@ export type {
 export { useStartMenu } from './react/useStartMenu';
 export type { TaskbarItem, TaskbarWindow, UseTaskbarResult } from './react/useTaskbar';
 export { useTaskbar } from './react/useTaskbar';
+export type { UseTrayResult } from './react/useTray';
+export { useTray } from './react/useTray';
 export type { UseDesktopsResult, UseWindowResult, WindowActions } from './react/useWindow';
 export { useDesktops, useWindow } from './react/useWindow';
 export type {

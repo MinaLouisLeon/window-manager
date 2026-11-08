@@ -1,6 +1,6 @@
 import { Button } from '@integr8-media/ui';
-import { Calculator, Folder, Info, NotebookPen, Terminal } from 'lucide-react';
-import { type ComponentType, type ReactElement, type ReactNode, useState } from 'react';
+import { Calculator, Folder, Info, NotebookPen, RefreshCw, Terminal, Wifi } from 'lucide-react';
+import { type ComponentType, type ReactElement, type ReactNode, useEffect, useState } from 'react';
 import { createWindowManager } from '../src/core/createWindowManager';
 import type { AppDefinition, ShellSettings, WindowManager } from '../src/core/types';
 import {
@@ -56,6 +56,12 @@ export const DEMO_APPS: AppDefinition[] = [
 
 function Notes({ data }: AppWindowProps<{ text?: string } | undefined>): ReactElement {
   const win = useAppWindow<{ text?: string } | undefined>();
+  const { setSaveHandler, setDirty } = win;
+  // The close dialog of a window with unsaved text then offers "Save".
+  useEffect(() => {
+    setSaveHandler(() => setDirty(false));
+    return () => setSaveHandler(null);
+  }, [setSaveHandler, setDirty]);
   return (
     <div className="flex h-full flex-col gap-2 p-2">
       <textarea
@@ -166,6 +172,13 @@ export interface DemoOptions {
   shell?: Partial<ShellSettings>;
   /** Number of desktops. Default 1. */
   desktops?: number;
+  /** Register a few notification area items (network, sync). Default false. */
+  tray?: boolean;
+  /**
+   * Start with notifications: `true` for four (one of each level, one with an action), or a
+   * number for that many (to see the list scroll). Default none.
+   */
+  notifications?: boolean | number;
 }
 
 const CYCLE = ['notes', 'terminal', 'counter', 'notes', 'terminal', 'counter'];
@@ -175,6 +188,8 @@ export function createDemoManager({
   windows = 3,
   shell,
   desktops = 1,
+  tray = false,
+  notifications = false,
 }: DemoOptions = {}): WindowManager {
   const manager = createWindowManager({
     apps: DEMO_APPS,
@@ -183,6 +198,41 @@ export function createDemoManager({
   });
   for (let index = 0; index < windows; index += 1) {
     manager.open({ appId: CYCLE[index % CYCLE.length] as string });
+  }
+  if (tray) {
+    manager.registerTrayItem({ id: 'network', label: 'Network', icon: <Wifi />, order: 1 });
+    manager.registerTrayItem({
+      id: 'sync',
+      label: 'Sync',
+      icon: <RefreshCw />,
+      badge: 2,
+      order: 2,
+      appId: 'files',
+    });
+  }
+  if (typeof notifications === 'number') {
+    const levels = ['info', 'success', 'warning', 'error'] as const;
+    for (let index = 0; index < notifications; index += 1) {
+      const long = 'A longer message that wraps onto a second line.';
+      manager.notify({
+        title: `Notification ${index + 1}`,
+        body: index % 2 === 0 ? 'A short message.' : long,
+        level: levels[index % levels.length] as (typeof levels)[number],
+      });
+    }
+  } else if (notifications) {
+    manager.notify({ title: 'Welcome', body: 'The desktop is ready.', level: 'info' });
+    manager.notify({ title: 'Backup finished', level: 'success', appId: 'files' });
+    manager.notify({
+      title: 'Disk almost full',
+      body: '92% of the space is used.',
+      level: 'warning',
+    });
+    manager.notify({
+      title: 'Sync failed',
+      level: 'error',
+      action: { label: 'Open Files', open: { appId: 'files' } },
+    });
   }
   return manager;
 }
@@ -213,7 +263,7 @@ export function Frame({
 }): ReactElement {
   return (
     <div
-      className="relative min-h-[26rem] overflow-hidden rounded-lg border border-border"
+      className="relative min-h-104 overflow-hidden rounded-lg border border-border"
       style={{ height }}
     >
       {children}

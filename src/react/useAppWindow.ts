@@ -1,6 +1,7 @@
 import { useContext, useMemo } from 'react';
 import { WindowManagerError } from '../core/errors';
 import type { AppId, OpenOptions, WindowId, WindowState } from '../core/types';
+import type { SaveHandler } from './uiStores';
 import { useManagerSelector } from './useManagerSelector';
 import { useWindowManagerContext, WindowScopeContext } from './windowManagerContext';
 
@@ -20,6 +21,12 @@ export interface UseAppWindowResult<TData = unknown> {
   setData(data: TData | ((previous: TData) => TData)): void;
   /** Sets or clears the function that decides whether the window may close. */
   setCloseGuard(guard: (() => boolean | Promise<boolean>) | null): void;
+  /**
+   * Sets or clears what "Save" does in the close dialog of a window with unsaved changes. Without
+   * a handler the dialog only offers "Discard changes" and "Cancel". Return `false` (or throw)
+   * when saving failed: the window then stays open. Call it from an effect and clear it on cleanup.
+   */
+  setSaveHandler(handler: SaveHandler | null): void;
   /** Closes this window; resolves false when a close guard refused. */
   close(options?: { force?: boolean }): Promise<boolean>;
   /** Opens another window. Pass `parentId: id` for a child window (add `modal: true` to block this one). */
@@ -42,7 +49,7 @@ export interface UseAppWindowResult<TData = unknown> {
  * safe in effect cleanups.
  */
 export function useAppWindow<TData = unknown>(): UseAppWindowResult<TData> {
-  const { manager } = useWindowManagerContext();
+  const { manager, stores } = useWindowManagerContext();
   const windowId = useContext(WindowScopeContext);
   if (windowId === null) {
     throw new WindowManagerError(
@@ -76,6 +83,10 @@ export function useAppWindow<TData = unknown>(): UseAppWindowResult<TData> {
       setCloseGuard: (guard: (() => boolean | Promise<boolean>) | null): void => {
         if (alive()) manager.setCloseGuard(windowId, guard);
       },
+      setSaveHandler: (handler: SaveHandler | null): void => {
+        if (handler === null) stores.saveHandlers.delete(windowId);
+        else if (alive()) stores.saveHandlers.set(windowId, handler);
+      },
       close: async (options?: { force?: boolean }): Promise<boolean> =>
         alive() ? manager.close(windowId, options) : true,
       open: (options: OpenOptions): WindowId => manager.open(options),
@@ -86,7 +97,7 @@ export function useAppWindow<TData = unknown>(): UseAppWindowResult<TData> {
         target: MessageTarget = { windowId },
       ): (() => void) => manager.onMessage(target, handler),
     };
-  }, [manager, windowId]);
+  }, [manager, stores, windowId]);
 
   return { id: windowId, window: win as WindowState<TData> | null, ...actions };
 }

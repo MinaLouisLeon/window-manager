@@ -10,6 +10,7 @@ export type ShortcutAction =
   | 'toggleFullscreen'
   | 'toggleAlwaysOnTop'
   | 'showDesktop'
+  | 'desktopOverview'
   | 'switchDesktop'
   | 'startMenu'
   | 'leaveFullscreen';
@@ -35,6 +36,7 @@ export const DEFAULT_SHORTCUTS: Readonly<Record<ShortcutAction, string>> = {
   toggleFullscreen: 'Ctrl+Alt+F',
   toggleAlwaysOnTop: 'Ctrl+Alt+T',
   showDesktop: 'Ctrl+Alt+D',
+  desktopOverview: 'Ctrl+Alt+O',
   switchDesktop: 'Ctrl+Alt',
   startMenu: 'Ctrl+Alt+Space',
   leaveFullscreen: 'Escape',

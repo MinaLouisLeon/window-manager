@@ -7,8 +7,9 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
+  Button,
 } from '@integr8-media/ui';
-import { type ReactElement, useEffect } from 'react';
+import { type ReactElement, useEffect, useState } from 'react';
 import type { WindowId } from '../core/types';
 import { useExternalStore } from '../react/externalStore';
 import { shallowEqualArray, useManagerSelector } from '../react/useManagerSelector';
@@ -22,23 +23,30 @@ export interface CloseGuardDialogProps {
   description?: string;
   /** Label of the button that closes the window anyway. Default "Discard changes". */
   discardLabel?: string;
+  /** Label of the button that saves, then closes (shown when the window has a save handler). */
+  saveLabel?: string;
   /** Label of the button that keeps the window open. Default "Cancel". */
   cancelLabel?: string;
 }
 
 /**
  * Asks before a window with unsaved changes (`dirty`) closes: "Discard changes" closes it, "Cancel"
- * keeps it open. Mount it once (the shell does). While a window is dirty this component owns its
- * close guard; an app that needs its own logic can keep `dirty` false and set the guard itself.
+ * keeps it open, and "Save" (only when the window's app set a handler with
+ * `useAppWindow().setSaveHandler`) saves and then closes it; if saving fails the window stays
+ * open. Mount it once (the shell does). While a window is dirty this component owns its close
+ * guard; an app that needs its own logic can keep `dirty` false and set the guard itself.
  */
 export function CloseGuardDialog({
   title = (windowTitle) => `Close "${windowTitle}"?`,
   description = 'This window has unsaved changes. If you close it they will be lost.',
   discardLabel = 'Discard changes',
   cancelLabel = 'Cancel',
+  saveLabel = 'Save',
 }: CloseGuardDialogProps): ReactElement {
   const { manager, stores } = useWindowManagerContext();
   const request = useExternalStore(stores.closeRequest);
+  const [saving, setSaving] = useState(false);
+  const saveHandler = request === null ? undefined : stores.saveHandlers.get(request.windowId);
   const dirtyIds = useManagerSelector(
     (state) =>
       Object.values(state.windows)
@@ -74,7 +82,23 @@ export function CloseGuardDialog({
   const answer = (allow: boolean): void => {
     const current = stores.closeRequest.get();
     stores.closeRequest.set(null);
+    if (allow && current !== null) stores.saveHandlers.delete(current.windowId);
     current?.resolve(allow);
+  };
+
+  const save = async (): Promise<void> => {
+    const asked = stores.closeRequest.get();
+    if (saveHandler === undefined || asked === null) return;
+    setSaving(true);
+    let saved = true;
+    try {
+      saved = (await saveHandler()) !== false;
+    } catch {
+      saved = false;
+    }
+    setSaving(false);
+    // Only act if this question is still the one on screen (a newer one replaces it).
+    if (saved && stores.closeRequest.get() === asked) answer(true);
   };
 
   return (
@@ -88,10 +112,17 @@ export function CloseGuardDialog({
           <AlertDialogDescription>{description}</AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel onClick={() => answer(false)}>{cancelLabel}</AlertDialogCancel>
-          <AlertDialogAction variant="destructive" onClick={() => answer(true)}>
+          <AlertDialogCancel disabled={saving} onClick={() => answer(false)}>
+            {cancelLabel}
+          </AlertDialogCancel>
+          <AlertDialogAction variant="destructive" disabled={saving} onClick={() => answer(true)}>
             {discardLabel}
           </AlertDialogAction>
+          {saveHandler === undefined ? null : (
+            <Button disabled={saving} data-wm-close-guard-save="" onClick={() => void save()}>
+              {saveLabel}
+            </Button>
+          )}
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>

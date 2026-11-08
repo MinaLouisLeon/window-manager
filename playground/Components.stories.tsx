@@ -21,6 +21,7 @@ import {
   WindowSwitcher,
   WindowTitleBar,
 } from '../src/index';
+import { AppIcon } from '../src/react/AppIcon';
 import { DemoProvider, Frame } from './demo';
 
 /** Reports the desktop size to the manager (what `Desktop` does), for stories without one. */
@@ -359,5 +360,31 @@ export const CloseGuard: Story = () => (
     <WindowBox>
       <DirtyWindow />
     </WindowBox>
+  </DemoProvider>
+);
+
+// ---------- app icon ----------
+
+const ICON_SVG =
+  "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='12' cy='12' r='10' fill='gray'/%3E%3C/svg%3E";
+
+export const AppIconImage: Story = () => (
+  <DemoProvider options={{ windows: 0 }}>
+    <Note>
+      Image icons ({'{ src, alt }'}) are drawn with ui's Avatar: the first icon loads, the second
+      cannot, so it shows its fallback letter.
+    </Note>
+    <div className="flex items-center gap-4">
+      <span className="size-10">
+        <AppIcon icon={{ src: ICON_SVG, alt: 'Loaded icon' }} className="size-10" fallback="L" />
+      </span>
+      <span className="size-10">
+        <AppIcon
+          icon={{ src: '/does-not-exist.png', alt: 'Missing icon' }}
+          className="size-10"
+          fallback={<span className="text-lg font-medium">M</span>}
+        />
+      </span>
+    </div>
   </DemoProvider>
 );

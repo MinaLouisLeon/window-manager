@@ -2,6 +2,7 @@ import { Button, cn } from '@integr8-media/ui';
 import { Copy, Minus, Square, X } from 'lucide-react';
 import type { CSSProperties, ReactElement, Ref } from 'react';
 import type { UseWindowFrameResult, WindowControl } from '../react/useWindowFrame';
+import { SnapLayoutsMenu } from './SnapLayoutsMenu';
 
 /** Props of `WindowControls`. */
 export interface WindowControlsProps {
@@ -29,7 +30,8 @@ const MAC_GLYPH = 'text-foreground opacity-0 group-hover/mac:opacity-80';
  * The minimize, maximize (restore) and close buttons. `controlsStyle="windows"` draws icon
  * buttons for the right of the title bar; `"mac"` draws round buttons for the left, in the
  * destructive, warning and success colors. The style comes from the frame (the app's
- * `controlsStyle`, or the shell's).
+ * `controlsStyle`, or the shell's). Hovering or long-pressing the maximize button opens the snap
+ * layouts menu (`SnapLayoutsMenu`).
  */
 export function WindowControls({
   frame,
@@ -53,8 +55,16 @@ export function WindowControls({
     >
       {shown.map((control) => {
         const props = frame.getControlProps(control);
+        const withLayouts = (button: ReactElement): ReactElement =>
+          control === 'maximize' && frame.window !== null ? (
+            <SnapLayoutsMenu key={control} windowId={frame.window.id}>
+              {button}
+            </SnapLayoutsMenu>
+          ) : (
+            button
+          );
         if (mac) {
-          return (
+          return withLayouts(
             <button
               key={control}
               {...props}
@@ -74,10 +84,10 @@ export function WindowControls({
               ) : (
                 <Square className={cn('size-1.5', MAC_GLYPH)} strokeWidth={3} />
               )}
-            </button>
+            </button>,
           );
         }
-        return (
+        return withLayouts(
           <Button
             key={control}
             {...props}
@@ -98,7 +108,7 @@ export function WindowControls({
             ) : (
               <Square className="size-3.5" />
             )}
-          </Button>
+          </Button>,
         );
       })}
     </div>
