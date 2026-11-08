@@ -1,4 +1,4 @@
-import { cn } from '@integr8-media/ui';
+import { Card, cn } from '@integr8-media/ui';
 import type { CSSProperties, ReactElement, ReactNode, Ref } from 'react';
 import type { WindowId } from '../core/types';
 import { mergeRefs } from '../react/propHelpers';
@@ -45,11 +45,12 @@ export function Window({
   });
 
   return (
-    <div
+    <Card
       {...rootProps}
       data-window-id={windowId}
       className={cn(
-        'flex flex-col overflow-hidden border border-border bg-card text-card-foreground',
+        // ui's Card has padding, a gap and a large radius of its own: the frame needs none of them.
+        'gap-0 overflow-hidden py-0',
         'rounded-[var(--wm-window-radius)] outline-none',
         'transition-[width,height,transform] duration-150 ease-out',
         'animate-[wm-window-open_150ms_ease-out]',
@@ -82,6 +83,6 @@ export function Window({
           onPointerDown={() => manager.focus(windowId)}
         />
       ) : null}
-    </div>
+    </Card>
   );
 }

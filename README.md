@@ -116,13 +116,16 @@ Peer dependencies: `react` and `react-dom` 19, `@integr8-media/ui`, `lucide-reac
 ## Building blocks
 
 **Components:** `WindowManagerShell` (the default composition), `Desktop`, `Window`,
-`WindowTitleBar`, `WindowControls`, `WindowMenu`, `SnapPreview`, `CloseGuardDialog`,
-`DesktopIcons`, `Taskbar`, `StartMenu`, `WindowSwitcher`, `DesktopSwitcher`, `DesktopMenu`.
+`WindowTitleBar`, `WindowControls`, `WindowMenu`, `SnapPreview`, `SnapLayoutsMenu`,
+`CloseGuardDialog`, `DesktopIcons`, `Taskbar`, `StartMenu`, `WindowSwitcher`, `DesktopSwitcher`,
+`DesktopMenu`, `DesktopOverview`, `WallpaperPicker`, and the notification area: `NotificationArea`,
+`NotificationTrayItem`, `Clock`, `NotificationCenter`, `QuickSettings`.
 
 **Hooks:** `useWindowManager`, `useWindow`, `useDesktops`, `useAppWindow`, `useDesktopSurface`,
-`useWindowFrame`, `useSnapPreview`, `useDesktopIcons`, `useTaskbar`, `useStartMenu`,
-`useWindowSwitcher`, `useDesktopSwitcher`, `useWindowMenu`, `useDesktopMenu`, `useShortcuts`, and
-`useRegisterWindowMenuItems` / `useRegisterDesktopMenuItems` to add your own menu entries.
+`useWindowFrame`, `useSnapPreview`, `useSnapLayouts`, `useDesktopIcons`, `useTaskbar`,
+`useStartMenu`, `useWindowSwitcher`, `useDesktopSwitcher`, `useDesktopOverview`, `useWindowMenu`,
+`useDesktopMenu`, `useShortcuts`, `useTray`, `useNotifications`, `useClock`, `useQuickSettings`,
+and `useRegisterWindowMenuItems` / `useRegisterDesktopMenuItems` to add your own menu entries.
 
 Each component accepts `className` and `style` and forwards its ref. Compose your own shell from
 the parts, or skip the components and build on the hooks.
@@ -131,10 +134,16 @@ the parts, or skip the components and build on the hooks.
 
 `useAppWindow()` gives the app's window component its id and state plus `setTitle`, `setBadge`,
 `setDirty`, `setData`, `setCloseGuard`, `close`, `open` (child or other windows), `send` and
-`onMessage`. A window marked `dirty` asks before closing (`CloseGuardDialog`).
+`onMessage`. A window marked `dirty` asks before closing (`CloseGuardDialog`): "Discard changes" or
+"Cancel", plus "Save" when the app set a save handler with `setSaveHandler`. A handler that returns
+`false` (or throws) keeps the window open.
 
 ```tsx
 const win = useAppWindow();
+useEffect(() => {
+  win.setSaveHandler(() => saveDocument()); // a promise that rejects or resolves false: stay open
+  return () => win.setSaveHandler(null);
+}, [win.setSaveHandler]);
 win.open({ appId: 'settings', parentId: win.id, modal: true }); // a modal child of this window
 win.send({ appId: 'terminal' }, { run: 'ls' }); // message another app
 ```
@@ -145,6 +154,64 @@ win.send({ appId: 'terminal' }, { run: 'ls' }); // message another app
 manager.openFromUrl('?open=notes&file=todo.txt'); // opens Notes with data { file: 'todo.txt' }
 manager.toUrl({ appId: 'notes' }, { file: 'todo.txt' }); // '?open=notes&file=todo.txt'
 ```
+
+### Snap layouts and edge magnet
+
+Hover the maximize button of a window (or press and hold it on a touch screen) to open the snap
+layouts menu: halves, quarters, thirds, and two thirds with a third. Pick a zone and the window
+snaps there. `SnapLayoutsMenu` is part of `WindowControls`; `useSnapLayouts(windowId)` gives the
+layouts and `apply(layoutId, zone)` for your own menu. While a window is dragged its edges stick to
+the edges of the work area and of the other windows (8 px). Tune it with the manager options
+`edgeMagnet` (pixels, or `false` for no magnet), `snapThreshold` (pixels from an edge that start a
+snap preview, default 16) and `minVisibleTitleBar`; `manager.getConfig()` returns the values in
+use. The pure helpers `magnetize()` and `SNAP_LAYOUTS` are exported from
+`@integr8-media/window-manager/core`.
+
+### Desktop overview and wallpapers
+
+`DesktopOverview` shows every desktop with a frame (icon and title, never a live thumbnail) for
+each window. Click a desktop to switch, click a window to focus it, drag a window onto another
+desktop to move it (Shift+Left or Right does the same from the keyboard). Open it with Ctrl+Alt+O,
+the desktop menu or the desktop switcher; Esc closes it. `useDesktopOverview()` is the headless
+version.
+
+Each desktop has its own wallpaper: `{ type: 'theme' | 'color' | 'gradient' | 'image' }`, set in
+`createWindowManager({ desktops })` or with `manager.setWallpaper(desktopId, wallpaper)`, and saved
+with the layout. The desktop menu's "Change wallpaper…" opens `WallpaperPicker` (theme background,
+colors and gradients built from the theme tokens, any CSS color or gradient, an image URL). The app
+stores uploads itself:
+
+```tsx
+<WindowManagerShell
+  desktop={{ onWallpaperUpload: async (file) => (await uploadToMyServer(file)).url }}
+/>
+```
+
+### Notification area
+
+`WindowManagerShell` puts a `NotificationArea` at the end of the taskbar: tray items, the clock
+(a popover with ui's `Calendar`), the notification bell and the quick settings (theme, taskbar
+position, auto-hide, window controls style). Pass your own with `notificationArea`, or `null` for
+none.
+
+```ts
+const unregister = manager.registerTrayItem({ id: 'sync', label: 'Sync', icon: 'sync', appId: 'files' });
+manager.updateTrayItem('sync', { badge: 2 });
+
+manager.notify({
+  title: 'Export finished',
+  body: 'report.pdf is ready.',
+  level: 'success', // 'info' | 'success' | 'warning' | 'error'
+  action: { label: 'Open', open: { appId: 'files' } },
+});
+```
+
+New notifications also show as toasts through ui's `toast()`: mount ui's `<Toaster />` once in your
+app (or turn them off with `<NotificationArea notifications={{ toasts: false }} />`). The Toaster
+is positioned against the browser window; when the shell fills only part of the page, put the
+Toaster inside an element with a CSS `transform` that wraps the shell to keep toasts inside it, and
+use its `offset` to clear the taskbar. Notifications
+and tray items are not saved with the layout.
 
 ## Theming
 
@@ -221,7 +288,7 @@ use Ctrl+Alt.
 | Minimize / toggle maximize | Ctrl+Alt+M / Ctrl+Alt+Up |
 | Snap left / right | Ctrl+Alt+Left / Ctrl+Alt+Right |
 | Toggle fullscreen / always on top | Ctrl+Alt+F / Ctrl+Alt+T |
-| Show desktop | Ctrl+Alt+D |
+| Show desktop / desktop overview | Ctrl+Alt+D / Ctrl+Alt+O |
 | Switch to desktop 1–9 | Ctrl+Alt+1 … 9 |
 | Open start menu | Ctrl+Alt+Space |
 | Move or resize with the keyboard | Window menu → Move / Resize, then arrows (Shift: 10× step), Enter commits, Esc cancels |

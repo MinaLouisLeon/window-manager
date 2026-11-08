@@ -156,6 +156,61 @@ export function dragRestoreBounds(pointer: Point, current: Bounds, restore: Boun
   };
 }
 
+/** Distance in px at which window edges start to stick while dragging (`magnetize`). */
+export const DEFAULT_EDGE_MAGNET = 8;
+
+/**
+ * The snap layouts offered by the snap layouts menu: each is a set of zones that tile the work
+ * area, so a window picked into one zone leaves room for the others.
+ */
+export const SNAP_LAYOUTS: { id: string; zones: SnapZone[] }[] = [
+  { id: 'halves', zones: ['left', 'right'] },
+  { id: 'quarters', zones: ['top-left', 'top-right', 'bottom-left', 'bottom-right'] },
+  { id: 'thirds', zones: ['left-third', 'center-third', 'right-third'] },
+  { id: 'two-thirds-left', zones: ['left-two-thirds', 'right-third'] },
+  { id: 'two-thirds-right', zones: ['left-third', 'right-two-thirds'] },
+];
+
+/** The smallest move (within `distance`) that puts a span's start or end on one of `targets`. */
+function nearestShift(start: number, end: number, targets: number[], distance: number): number {
+  let best = 0;
+  let bestSize = Number.POSITIVE_INFINITY;
+  for (const target of targets) {
+    for (const shift of [target - start, target - end]) {
+      const size = Math.abs(shift);
+      if (size <= distance && size < bestSize) {
+        best = shift;
+        bestSize = size;
+      }
+    }
+  }
+  return best;
+}
+
+/**
+ * Makes window edges stick: moves `bounds` (never resizes it) by up to `distance` px so that an
+ * edge lands on an edge of the work area `area` or of one of `others` (a neighbour's edge, to sit
+ * flush against it or line up with it). Each axis is handled on its own and the closest edge wins.
+ * A `distance` of 0 or less returns `bounds` unchanged.
+ */
+export function magnetize(
+  bounds: Bounds,
+  area: Bounds,
+  others: Bounds[],
+  distance: number,
+): Bounds {
+  if (!(distance > 0)) return bounds;
+  const xs = [area.x, area.x + area.width];
+  const ys = [area.y, area.y + area.height];
+  for (const other of others) {
+    xs.push(other.x, other.x + other.width);
+    ys.push(other.y, other.y + other.height);
+  }
+  const dx = nearestShift(bounds.x, bounds.x + bounds.width, xs, distance);
+  const dy = nearestShift(bounds.y, bounds.y + bounds.height, ys, distance);
+  return dx === 0 && dy === 0 ? bounds : { ...bounds, x: bounds.x + dx, y: bounds.y + dy };
+}
+
 /**
  * Top-left corner for the `index`-th cascaded window. The offset repeats down and right until the
  * window would leave the area, then starts again at the corner.

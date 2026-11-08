@@ -1,6 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import { createTestManager, createWrapper } from '../../test/harness';
+import { createTestManager, createWrapper, testApps } from '../../test/harness';
+import { createWindowManager } from '../core/createWindowManager';
 import type { Bounds, WindowId, WindowManager } from '../core/types';
 import { type ResizeEdge, useWindowFrame } from './useWindowFrame';
 
@@ -208,6 +209,75 @@ describe('useWindowFrame: title bar', () => {
     expect(root().style.transform).toBe('translate(0px, 652px)');
     fireEvent.pointerUp(title(), pointer);
     expect(boundsOf(manager, id).y).toBe(652);
+  });
+
+  it('sticks to the edges of the work area while dragging', () => {
+    const { manager, id } = setup();
+    // The window is 400 wide: at x=595 its right edge is 5 px short of the edge at 1000.
+    // Dragged at y=100 (not near the top edge, which would maximize on release).
+    drag([100, 100], [695, 100]);
+    expect(root().style.transform).toBe('translate(600px, 0px)');
+    fireEvent.pointerUp(title(), { ...pointer, clientX: 695, clientY: 100 });
+    expect(boundsOf(manager, id)).toMatchObject({ x: 600, y: 0 });
+  });
+
+  it('sticks to the edges of other windows while dragging', () => {
+    const manager = createTestManager();
+    manager.open({ appId: 'notes', bounds: { x: 500, y: 300 } });
+    const id = manager.open({ appId: 'notes', bounds: { x: 0, y: 0 } });
+    render(<Frame id={id} />, { wrapper: createWrapper(manager) });
+    // At x=97 the window's right edge (497) is 3 px short of the neighbour's left edge (500).
+    drag([100, 10], [197, 10]);
+    expect(root().style.transform).toBe('translate(100px, 0px)');
+  });
+
+  it('does not stick when the edge magnet is turned off', () => {
+    const manager = createWindowManager({ apps: testApps, edgeMagnet: false });
+    manager.setViewport({ width: 1000, height: 700 });
+    const id = manager.open({ appId: 'notes', bounds: { x: 0, y: 0 } });
+    render(<Frame id={id} />, { wrapper: createWrapper(manager) });
+    drag([100, 10], [695, 10]);
+    expect(root().style.transform).toBe('translate(595px, 0px)');
+  });
+
+  it('uses the edge magnet distance of the manager', () => {
+    const manager = createWindowManager({ apps: testApps, edgeMagnet: 20 });
+    manager.setViewport({ width: 1000, height: 700 });
+    const id = manager.open({ appId: 'notes', bounds: { x: 0, y: 0 } });
+    render(<Frame id={id} />, { wrapper: createWrapper(manager) });
+    // 15 px short of the right edge: beyond the default 8, within 20.
+    drag([100, 10], [685, 10]);
+    expect(root().style.transform).toBe('translate(600px, 0px)');
+  });
+
+  it('keeps as much of the title bar visible as the manager says', () => {
+    const manager = createWindowManager({ apps: testApps, minVisibleTitleBar: 100 });
+    manager.setViewport({ width: 1000, height: 700 });
+    const id = manager.open({ appId: 'notes', bounds: { x: 0, y: 0 } });
+    render(<Frame id={id} />, { wrapper: createWrapper(manager) });
+    drag([100, 10], [5000, 10]);
+    expect(root().style.transform).toBe('translate(900px, 0px)');
+  });
+
+  it('snaps at the snap threshold of the manager', () => {
+    const manager = createWindowManager({ apps: testApps, snapThreshold: 40 });
+    manager.setViewport({ width: 1000, height: 700 });
+    const id = manager.open({ appId: 'notes', bounds: { x: 0, y: 0 } });
+    render(<Frame id={id} />, { wrapper: createWrapper(manager) });
+    // 30 px from the left edge: a snap preview with 40 px, none with the default 16.
+    drag([100, 10], [30, 300]);
+    fireEvent.pointerUp(title(), { ...pointer, clientX: 30, clientY: 300 });
+    expect(manager.getState().windows[id]?.snap).toBe('left');
+  });
+
+  it('does not stick to the edges of minimized windows', () => {
+    const manager = createTestManager();
+    const other = manager.open({ appId: 'notes', bounds: { x: 500, y: 300 } });
+    manager.minimize(other);
+    const id = manager.open({ appId: 'notes', bounds: { x: 0, y: 0 } });
+    render(<Frame id={id} />, { wrapper: createWrapper(manager) });
+    drag([100, 10], [197, 10]);
+    expect(root().style.transform).toBe('translate(97px, 0px)');
   });
 
   it('does not start a drag for a press that barely moves', () => {

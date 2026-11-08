@@ -54,6 +54,9 @@ function run(action: ShortcutAction, manager: WindowManager, stores: UiStores): 
     case 'startMenu':
       stores.startMenu.set((previous) => ({ open: !previous.open, search: '' }));
       return true;
+    case 'desktopOverview':
+      stores.overview.set((previous) => !previous);
+      return true;
     default:
       break;
   }

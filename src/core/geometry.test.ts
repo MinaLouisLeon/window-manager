@@ -4,7 +4,9 @@ import {
   cascade,
   clampBounds,
   dragRestoreBounds,
+  magnetize,
   resizeBounds,
+  SNAP_LAYOUTS,
   workArea,
   zoneAtPoint,
 } from './geometry';
@@ -321,5 +323,82 @@ describe('resizeBounds', () => {
     const result = resizeBounds(start, 'n', 0, -900, { min: limits.min }, area);
     expect(result.y).toBe(0);
     expect(result.y + result.height).toBe(500);
+  });
+});
+
+describe('magnetize', () => {
+  const box = { x: 100, y: 100, width: 200, height: 150 };
+
+  it('sticks a left edge to the left edge of the area', () => {
+    expect(magnetize({ ...box, x: 5 }, area, [], 8).x).toBe(0);
+  });
+
+  it('sticks a right edge to the right edge of the area', () => {
+    expect(magnetize({ ...box, x: 795 }, area, [], 8).x).toBe(800);
+  });
+
+  it('sticks the top and bottom edges on their own axis', () => {
+    expect(magnetize({ ...box, y: 3 }, area, [], 8).y).toBe(0);
+    expect(magnetize({ ...box, y: 547 }, area, [], 8).y).toBe(550);
+  });
+
+  it('does nothing beyond the distance', () => {
+    expect(magnetize(box, area, [], 8)).toBe(box);
+    expect(magnetize({ ...box, x: 9 }, area, [], 8).x).toBe(9);
+  });
+
+  it('sits flush against a neighbour', () => {
+    const neighbour = { x: 500, y: 300, width: 200, height: 200 };
+    // The window's right edge is at 497, 3 px short of the neighbour's left edge at 500.
+    const result = magnetize({ ...box, x: 297 }, area, [neighbour], 8);
+    expect(result.x + result.width).toBe(500);
+  });
+
+  it('lines an edge up with a neighbour edge', () => {
+    const neighbour = { x: 400, y: 400, width: 300, height: 100 };
+    expect(magnetize({ ...box, x: 404, y: 50 }, area, [neighbour], 8).x).toBe(400);
+  });
+
+  it('takes the closest edge', () => {
+    const neighbour = { x: 60, y: 0, width: 10, height: 10 };
+    // Left edge at 62: area edge 0 is 62 away (too far), neighbour edges 60 and 70 are 2 and 8.
+    expect(magnetize({ ...box, x: 62 }, area, [neighbour], 8).x).toBe(60);
+  });
+
+  it('never changes the size', () => {
+    const result = magnetize({ ...box, x: 4, y: 4 }, area, [], 8);
+    expect(result.width).toBe(200);
+    expect(result.height).toBe(150);
+  });
+
+  it('returns the same object for a distance of 0 or less', () => {
+    const near = { ...box, x: 2 };
+    expect(magnetize(near, area, [], 0)).toBe(near);
+    expect(magnetize(near, area, [], -5)).toBe(near);
+  });
+});
+
+describe('SNAP_LAYOUTS', () => {
+  it('has unique ids and at least two zones each', () => {
+    const ids = SNAP_LAYOUTS.map((layout) => layout.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    for (const layout of SNAP_LAYOUTS) expect(layout.zones.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('covers halves, quarters, thirds and two-thirds with a third', () => {
+    const zones = SNAP_LAYOUTS.flatMap((layout) => layout.zones);
+    for (const zone of ['left', 'top-left', 'center-third', 'left-two-thirds', 'right-third']) {
+      expect(zones).toContain(zone as SnapZone);
+    }
+  });
+
+  it('tiles the work area without gaps or overlaps', () => {
+    for (const layout of SNAP_LAYOUTS) {
+      const covered = layout.zones.reduce((total, zone) => {
+        const bounds = boundsForZone(zone, area);
+        return total + bounds.width * bounds.height;
+      }, 0);
+      expect(covered).toBe(area.width * area.height);
+    }
   });
 });

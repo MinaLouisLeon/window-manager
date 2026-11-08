@@ -232,16 +232,33 @@ export interface WindowManagerOptions {
   restore?: (win: WindowState) => boolean;
   /** Delay before a change is saved, default 500. */
   saveDebounceMs?: number;
+  /** Pixels from an edge that start a snap preview while a window is dragged, default 16. */
+  snapThreshold?: number;
+  /** Pixels at which window edges stick while dragging, or `false` for no magnet; default 8. */
+  edgeMagnet?: number | false;
   /** Pixels of a title bar that always stay in the work area, default 48. */
   minVisibleTitleBar?: number;
   /** Offset between cascaded windows, default 24. */
   cascadeOffset?: number;
+  /** The clock used for `Notification.createdAt` (milliseconds); default `Date.now`. For tests. */
+  now?: () => number;
+}
+
+/** The behavior settings of a manager, with the defaults filled in (see `getConfig`). */
+export interface WindowManagerConfig {
+  /** Pixels from an edge that start a snap preview while dragging. */
+  snapThreshold: number;
+  /** Pixels at which edges stick while dragging; `false` turns the magnet off. */
+  edgeMagnet: number | false;
+  /** Pixels of a title bar that always stay in the work area. */
+  minVisibleTitleBar: number;
+  /** Offset between cascaded windows. */
+  cascadeOffset: number;
 }
 
 /**
- * The window manager. This is the part implemented so far (windows, focus, close guards, events,
- * snapping, desktops, icons, pinned apps, shell settings, persistence, messaging, deep links); the
- * notification area is added by a later milestone.
+ * The window manager: windows, focus, close guards, events, snapping, desktops, wallpapers, icons,
+ * pinned apps, shell settings, persistence, messaging, deep links and the notification area.
  */
 export interface WindowManager {
   /** The current state. */
@@ -255,6 +272,8 @@ export interface WindowManager {
   ): () => void;
   /** The definition of an app. Throws `UNKNOWN_APP`. */
   getApp(appId: AppId): AppDefinition;
+  /** The behavior options this manager was created with, defaults filled in. Never changes. */
+  getConfig(): WindowManagerConfig;
 
   /** Opens a window (or focuses the existing one of a single-instance app). */
   open<TData>(options: OpenOptions<TData>): WindowId;
@@ -367,6 +386,25 @@ export interface WindowManager {
    * it uses the window's app. Throws `UNKNOWN_WINDOW` or `UNKNOWN_APP`.
    */
   toUrl(target: { windowId: WindowId } | { appId: AppId }, params?: Record<string, string>): string;
+
+  /**
+   * Adds an item to the notification area (an item with the same `id` is replaced); returns a
+   * function that removes it again (a no-op once another registration replaced it).
+   */
+  registerTrayItem(item: TrayItem): () => void;
+  /** Changes a tray item (its `id` stays). An unknown id is ignored. */
+  updateTrayItem(id: string, patch: Partial<TrayItem>): void;
+  /**
+   * Adds a notification (unread, newest first) and returns its id. Emits the `notification` event.
+   * Notifications are not saved with the layout.
+   */
+  notify(notification: Omit<Notification, 'id' | 'createdAt' | 'read'>): string;
+  /** Marks one notification, or with `'all'` every notification, as read. */
+  markRead(id: string | 'all'): void;
+  /** Removes one notification. An unknown id is ignored. */
+  dismiss(id: string): void;
+  /** Removes every notification. */
+  clearNotifications(): void;
 
   /** The current layout as a snapshot (what gets saved). */
   serialize(): LayoutSnapshot;

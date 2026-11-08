@@ -1,3 +1,4 @@
+import { Avatar, AvatarFallback, AvatarImage, cn } from '@integr8-media/ui';
 import { isValidElement, type ReactElement, type ReactNode } from 'react';
 import { useWindowManagerContext } from './windowManagerContext';
 
@@ -12,7 +13,8 @@ export interface AppIconProps {
 
 /**
  * Draws an app icon: a string is looked up in the provider's `icons` map, `{ src, alt }` becomes
- * an image and a React element is shown as is. Anything else shows `fallback` (default nothing).
+ * an image (a ui `Avatar`, so `fallback` shows until it loads) and a React element is shown as
+ * is. Anything else shows `fallback` (default nothing).
  */
 export function AppIcon({ icon, className, fallback = null }: AppIconProps): ReactElement {
   const { icons } = useWindowManagerContext();
@@ -23,7 +25,13 @@ export function AppIcon({ icon, className, fallback = null }: AppIconProps): Rea
     return icon as ReactElement;
   } else if (typeof icon === 'object' && icon !== null && 'src' in icon) {
     const { src, alt } = icon as { src: string; alt?: string };
-    return <img src={src} alt={alt ?? ''} draggable={false} className={className} />;
+    // ui's Avatar loads the image and shows `fallback` until it has (or when it cannot).
+    return (
+      <Avatar className={cn('rounded-none', className ?? 'size-auto')}>
+        <AvatarImage src={src} alt={alt ?? ''} draggable={false} />
+        <AvatarFallback className="rounded-none bg-transparent">{fallback}</AvatarFallback>
+      </Avatar>
+    );
   }
   return <>{fallback}</>;
 }

@@ -4,8 +4,10 @@ import {
   boundsForZone,
   cascade,
   clampBounds,
+  DEFAULT_EDGE_MAGNET,
   DEFAULT_MIN_SIZE,
   DEFAULT_MIN_VISIBLE_TITLE_BAR,
+  DEFAULT_SNAP_THRESHOLD,
   workArea,
 } from './geometry';
 import { createMessageBus } from './messaging';
@@ -20,12 +22,15 @@ import type {
   Insets,
   LayoutSnapshot,
   ManagerState,
+  Notification,
   OpenOptions,
   Point,
   ShellSettings,
   Size,
+  TrayItem,
   WindowId,
   WindowManager,
+  WindowManagerConfig,
   WindowManagerEvent,
   WindowManagerOptions,
   WindowState,
@@ -116,6 +121,13 @@ export function createWindowManager(options: WindowManagerOptions): WindowManage
   }
   const minVisibleTitleBar = options.minVisibleTitleBar ?? DEFAULT_MIN_VISIBLE_TITLE_BAR;
   const cascadeOffset = options.cascadeOffset ?? 24;
+  const config: WindowManagerConfig = {
+    snapThreshold: options.snapThreshold ?? DEFAULT_SNAP_THRESHOLD,
+    edgeMagnet: options.edgeMagnet ?? DEFAULT_EDGE_MAGNET,
+    minVisibleTitleBar,
+    cascadeOffset,
+  };
+  const now = options.now ?? Date.now;
 
   const desktops: Desktop[] = (
     options.desktops && options.desktops.length > 0 ? options.desktops : [{ name: 'Desktop 1' }]
@@ -158,6 +170,9 @@ export function createWindowManager(options: WindowManagerOptions): WindowManage
   /** Most recently focused first. */
   let recent: WindowId[] = [];
   let nextDesktopNumber = desktops.length + 1;
+  let nextNotificationNumber = 1;
+  /** Who registered each tray item last, so an old unregister function cannot remove a newer one. */
+  const trayTokens = new Map<string, symbol>();
   const bus = createMessageBus();
   /** False until `setViewport` ran; a layout restored before that is fitted by the first call. */
   let viewportSet = false;
@@ -292,6 +307,8 @@ export function createWindowManager(options: WindowManagerOptions): WindowManage
       prev.iconOrder === next.iconOrder &&
       prev.pinnedApps === next.pinnedApps &&
       prev.showingDesktop === next.showingDesktop &&
+      prev.tray === next.tray &&
+      prev.notifications === next.notifications &&
       sameSize(prev.viewport, next.viewport) &&
       sameInsets(prev.insets, next.insets)
     ) {
@@ -602,6 +619,8 @@ export function createWindowManager(options: WindowManagerOptions): WindowManage
     },
 
     getApp,
+
+    getConfig: () => config,
 
     open<TData>(opts: OpenOptions<TData>): WindowId {
       const app = getApp(opts.appId);
@@ -969,6 +988,71 @@ export function createWindowManager(options: WindowManagerOptions): WindowManage
       return buildDeepLink(getApp(target.appId).id, params);
     },
 
+    registerTrayItem(item) {
+      const token = Symbol(item.id);
+      trayTokens.set(item.id, token);
+      const draft = begin();
+      draft.tray = [...state.tray.filter((entry) => entry.id !== item.id), { ...item }];
+      commit(draft);
+      return () => {
+        if (trayTokens.get(item.id) !== token) return;
+        trayTokens.delete(item.id);
+        const next = begin();
+        next.tray = state.tray.filter((entry) => entry.id !== item.id);
+        commit(next);
+      };
+    },
+
+    updateTrayItem(id, patch) {
+      const current = state.tray.find((entry) => entry.id === id);
+      if (!current) return;
+      const changed = (Object.keys(patch) as (keyof TrayItem)[]).some(
+        (key) => key !== 'id' && !Object.is(current[key], patch[key]),
+      );
+      if (!changed) return;
+      const draft = begin();
+      draft.tray = state.tray.map((entry) =>
+        entry.id === id ? { ...entry, ...patch, id: entry.id } : entry,
+      );
+      commit(draft);
+    },
+
+    notify(input) {
+      const id = `notification-${nextNotificationNumber}`;
+      nextNotificationNumber += 1;
+      const notification: Notification = { ...input, id, createdAt: now(), read: false };
+      const draft = begin();
+      draft.notifications = [notification, ...state.notifications];
+      commit(draft);
+      emit('notification', { notification });
+      return id;
+    },
+
+    markRead(id) {
+      const unread = (entry: Notification): boolean =>
+        !entry.read && (id === 'all' || entry.id === id);
+      if (!state.notifications.some(unread)) return;
+      const draft = begin();
+      draft.notifications = state.notifications.map((entry) =>
+        unread(entry) ? { ...entry, read: true } : entry,
+      );
+      commit(draft);
+    },
+
+    dismiss(id) {
+      if (!state.notifications.some((entry) => entry.id === id)) return;
+      const draft = begin();
+      draft.notifications = state.notifications.filter((entry) => entry.id !== id);
+      commit(draft);
+    },
+
+    clearNotifications() {
+      if (state.notifications.length === 0) return;
+      const draft = begin();
+      draft.notifications = [];
+      commit(draft);
+    },
+
     serialize() {
       const minimizedFrom: Record<WindowId, RestorableStatus> = {};
       for (const win of Object.values(state.windows)) {
@@ -1198,6 +1282,7 @@ export function createWindowManager(options: WindowManagerOptions): WindowManage
       handlers.clear();
       guards.clear();
       showing.clear();
+      trayTokens.clear();
       bus.clear();
     },
   };

@@ -10,6 +10,7 @@ import {
   HoverCardContent,
   HoverCardTrigger,
   Separator,
+  Toolbar,
 } from '@integr8-media/ui';
 import { LayoutGrid, X } from 'lucide-react';
 import {
@@ -130,9 +131,9 @@ function TaskbarButton({
               </Badge>
             )}
             {dirty && badge === null ? (
-              <span
+              <Badge
                 aria-hidden="true"
-                className="absolute top-1 right-1 size-1.5 rounded-full bg-primary"
+                className="absolute top-1 right-1 size-1.5 min-w-0 rounded-full border-0 p-0"
               />
             ) : null}
           </Button>
@@ -166,10 +167,10 @@ function TaskbarButton({
                       {win.title}
                     </span>
                     {win.dirty ? (
-                      <span
+                      <Badge
                         role="img"
                         aria-label="Unsaved changes"
-                        className="size-1.5 shrink-0 rounded-full bg-primary"
+                        className="size-1.5 min-w-0 shrink-0 rounded-full border-0 p-0"
                       />
                     ) : null}
                   </Button>
@@ -226,8 +227,10 @@ function TaskbarButton({
 const PLACEMENT: Record<TaskbarPosition, string> = {
   bottom: 'inset-x-0 bottom-0 h-[var(--wm-taskbar-size)] flex-row border-t',
   top: 'inset-x-0 top-0 h-[var(--wm-taskbar-size)] flex-row border-b',
-  left: 'inset-y-0 left-0 w-[var(--wm-taskbar-size)] flex-col border-r',
-  right: 'inset-y-0 right-0 w-[var(--wm-taskbar-size)] flex-col border-l',
+  // The ui Toolbar sets `w-fit` for a vertical bar through a data variant, so the width needs one too.
+  left: 'inset-y-0 left-0 w-[var(--wm-taskbar-size)] data-[orientation=vertical]:w-[var(--wm-taskbar-size)] flex-col border-r',
+  right:
+    'inset-y-0 right-0 w-[var(--wm-taskbar-size)] data-[orientation=vertical]:w-[var(--wm-taskbar-size)] flex-col border-l',
 };
 
 const TUCKED: Record<TaskbarPosition, string> = {
@@ -260,7 +263,11 @@ export function Taskbar({
 }: TaskbarProps): ReactElement {
   const tb = useTaskbar();
   const vertical = tb.position === 'left' || tb.position === 'right';
-  const rootProps = tb.getRootProps(ref === undefined ? {} : { ref: mergeRefs<HTMLElement>(ref) });
+  // The hook types its props for any element (`dir: string`); ui's Toolbar wants 'ltr' | 'rtl'.
+  // The hook never sets `dir`, so it is dropped here.
+  const { dir: _dir, ...rootProps } = tb.getRootProps(
+    ref === undefined ? {} : { ref: mergeRefs<HTMLElement>(ref) },
+  );
 
   return (
     <>
@@ -272,12 +279,14 @@ export function Taskbar({
           onPointerEnter={tb.reveal}
         />
       ) : null}
-      <nav
+      <Toolbar
         {...rootProps}
+        orientation={vertical ? 'vertical' : 'horizontal'}
         data-wm-taskbar=""
         className={cn(
-          'absolute z-[9500] flex items-center gap-1 bg-card p-1 text-card-foreground',
-          'border-border transition-transform duration-150 ease-out motion-reduce:transition-none',
+          // ui's Toolbar is a bordered, rounded card: reset that, then draw the one edge.
+          'absolute z-[9500] rounded-none border-0 border-border',
+          'transition-transform duration-150 ease-out motion-reduce:transition-none',
           PLACEMENT[tb.position],
           tb.hidden && TUCKED[tb.position],
           className,
@@ -309,7 +318,7 @@ export function Taskbar({
         </div>
         {desktopSwitcher ? <DesktopSwitcher /> : null}
         {notificationArea}
-      </nav>
+      </Toolbar>
     </>
   );
 }

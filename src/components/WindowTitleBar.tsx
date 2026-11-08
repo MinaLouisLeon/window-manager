@@ -1,5 +1,6 @@
 import {
   Badge,
+  Button,
   ContextMenu,
   ContextMenuTrigger,
   cn,
@@ -78,18 +79,16 @@ export function WindowTitleBar({
           {mac ? controls : null}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <button
+              <Button
                 type="button"
+                variant="ghost"
+                size="icon-sm"
                 data-wm-no-drag=""
                 aria-label="Window menu"
-                className={cn(
-                  'flex size-6 shrink-0 items-center justify-center rounded-sm outline-none',
-                  'focus-visible:ring-2 focus-visible:ring-ring',
-                  mac ? '' : 'ml-2',
-                )}
+                className={cn('size-6 shrink-0 rounded-sm', mac ? '' : 'ml-2')}
               >
                 <AppIcon icon={manager.getApp(win.appId).icon} className="size-4" />
-              </button>
+              </Button>
             </DropdownMenuTrigger>
             <WindowMenu variant="dropdown" {...menuProps} />
           </DropdownMenu>
@@ -106,11 +105,11 @@ export function WindowTitleBar({
             {win.title}
           </span>
           {win.dirty ? (
-            <span
+            <Badge
               role="img"
               aria-label="Unsaved changes"
               data-wm-dirty=""
-              className="size-2 shrink-0 rounded-full bg-primary"
+              className="size-2 min-w-0 shrink-0 rounded-full border-0 p-0"
             />
           ) : null}
           {win.badge === null ? null : (

@@ -1,4 +1,13 @@
 import { useLayoutEffect, useState } from 'react';
+import type { TaskbarPosition } from '../core/types';
+
+/** The side a popup opens on, by taskbar position: away from the taskbar. */
+export const POPUP_SIDE: Readonly<Record<TaskbarPosition, 'top' | 'bottom' | 'left' | 'right'>> = {
+  bottom: 'top',
+  top: 'bottom',
+  left: 'right',
+  right: 'left',
+};
 
 /** Free space to keep between a popup and the edges of the screen, in px. */
 const EDGE = 8;
